@@ -95,6 +95,7 @@ namespace cl
         }
 
         static Matrix4 Perspective(float fov, float aspect, float nearPlane, float farPlane);
+        static Matrix4 Orthographic(float size, float aspectRatio, float nearPlane, float farPlane);
         static Matrix4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up);
         static Matrix4 Translate(const Vector3& translation);
         static Matrix4 Rotate(float angle, const Vector3& axis);
@@ -106,6 +107,7 @@ namespace cl
         static Matrix4 FromQuaternion(const Quaternion& q);
         Vector3 TransformPoint(const Vector3& v) const;
         Vector3 TransformDirection(const Vector3& v) const;
+        Matrix4 Inverse() const;
 
         Matrix4 operator*(const Matrix4& other) const;
     };

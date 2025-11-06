@@ -18,6 +18,36 @@ namespace cl
         return result;
     }
 
+    Matrix4 Matrix4::Orthographic(float size, float aspectRatio, float nearPlane, float farPlane)
+    {
+        Matrix4 result;
+
+        float halfWidth = size * aspectRatio * 0.5f;
+        float halfHeight = size * 0.5f;
+
+        result.m[0] = 1.0f / halfWidth;
+        result.m[1] = 0.0f;
+        result.m[2] = 0.0f;
+        result.m[3] = 0.0f;
+
+        result.m[4] = 0.0f;
+        result.m[5] = 1.0f / halfHeight;
+        result.m[6] = 0.0f;
+        result.m[7] = 0.0f;
+
+        result.m[8] = 0.0f;
+        result.m[9] = 0.0f;
+        result.m[10] = -2.0f / (farPlane - nearPlane);
+        result.m[11] = 0.0f;
+
+        result.m[12] = 0.0f;
+        result.m[13] = 0.0f;
+        result.m[14] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+        result.m[15] = 1.0f;
+
+        return result;
+    }
+
     Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3& up)
     {
         Vector3 zAxis = (eye - target).Normalize();
@@ -369,5 +399,71 @@ namespace cl
         result.m[10] = 1 - 2 * (xx + yy);
 
         return result;
+    }
+
+    Matrix4 Matrix4::Inverse() const
+    {
+        Matrix4 inv;
+        float det;
+
+        inv.m[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+            m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+
+        inv.m[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+            m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+
+        inv.m[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+            m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+
+        inv.m[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+            m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+
+        inv.m[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+            m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+
+        inv.m[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+            m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+
+        inv.m[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+            m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+
+        inv.m[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+            m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+
+        inv.m[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+            m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+
+        inv.m[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+            m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+
+        inv.m[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+            m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+
+        inv.m[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+            m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+
+        inv.m[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+            m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+
+        inv.m[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+            m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+
+        inv.m[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+            m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+
+        inv.m[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+            m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+        det = m[0] * inv.m[0] + m[1] * inv.m[4] + m[2] * inv.m[8] + m[3] * inv.m[12];
+
+        if (det == 0.0f)
+            return Matrix4::Identity();
+
+        det = 1.0f / det;
+
+        for (int i = 0; i < 16; i++)
+            inv.m[i] = inv.m[i] * det;
+
+        return inv;
     }
 }
