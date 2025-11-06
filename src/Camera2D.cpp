@@ -109,7 +109,8 @@ namespace cl
     {
         s_renderer->currentViewId = m_id;
         bgfx::setViewRect(m_id, 0, 0, uint16_t(s_renderer->width), uint16_t(s_renderer->height));
-        SetViewTransform(GetViewMatrix(), GetProjectionMatrix()); // Todo: Should be be before or after touch?
+        bgfx::setViewClear(m_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, s_renderer->clearColor, s_renderer->clearDepth, 0);
+        SetViewTransform(GetViewMatrix(), GetProjectionMatrix());
         bgfx::touch(m_id);
     }
 

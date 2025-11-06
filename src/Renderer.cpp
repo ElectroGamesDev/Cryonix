@@ -100,7 +100,7 @@ namespace cl
             return;
 
         // Update window size if changed
-        s_renderer->currentViewId = -1;
+        s_renderer->currentViewId = 0;
         s_renderer->window->GetWindowSize(s_renderer->width, s_renderer->height); // Todo: Maybe I can add this to Update() or something so it doesnt need to be manually called. Also, maybe just rename Update() to BeginFrame()
 
         // This is now handled in cameras
@@ -120,7 +120,7 @@ namespace cl
 
     void Clear(const Color& color, float depth)
     {
-        if (!s_renderer || s_renderer->currentViewId == -1)
+        if (!s_renderer)
             return;
 
         uint32_t rgba = 0;
@@ -129,12 +129,16 @@ namespace cl
         rgba |= uint32_t(color.b) << 8;
         rgba |= uint32_t(color.a);
 
-        bgfx::setViewClear(s_renderer->currentViewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, rgba, depth, 0);
+        s_renderer->clearColor = rgba;
+        s_renderer->clearDepth = depth;
+
+        if (s_renderer->currentViewId != 0)
+            bgfx::setViewClear(s_renderer->currentViewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, rgba, depth, 0);
     }
 
     void SetViewport(int x, int y, int width, int height)
     {
-        if (!s_renderer || s_renderer->currentViewId == -1)
+        if (!s_renderer || s_renderer->currentViewId == 0)
             return;
 
         bgfx::setViewRect(s_renderer->currentViewId, uint16_t(x), uint16_t(y), uint16_t(width), uint16_t(height));
@@ -142,7 +146,7 @@ namespace cl
 
     void SetViewTransform(const Matrix4& view, const Matrix4& projection)
     {
-        if (!s_renderer || s_renderer->currentViewId == -1)
+        if (!s_renderer || s_renderer->currentViewId == 0)
             return;
 
         bgfx::setViewTransform(s_renderer->currentViewId, view.m, projection.m);
@@ -150,7 +154,7 @@ namespace cl
 
     void DrawMesh(Mesh* mesh, const Matrix4& transform)
     {
-        if (s_renderer->currentViewId == -1 || !mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
+        if (s_renderer->currentViewId == 0 || !mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
             return;
 
         bgfx::setTransform(transform.m);

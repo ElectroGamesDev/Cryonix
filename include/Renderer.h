@@ -15,8 +15,9 @@ namespace cl
         int width;
         int height;
         bgfx::ProgramHandle defaultProgram; // Todo: Should likely remove this since default shader is in Shader.h
-        uint32_t clearColor;
-        uint16_t currentViewId = -1;
+        uint16_t currentViewId = 0;
+        uint32_t clearColor = 0x000000ff;
+        float clearDepth = 1.0f;
     };
 
     bool InitRenderer(Window* window, const Config& config);
