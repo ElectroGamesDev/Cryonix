@@ -1,0 +1,212 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\third_party">
+      <UniqueIdentifier>{442fcacc-b3b3-46b4-aed9-e4e4a68ea4fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\third_party\basic universal">
+      <UniqueIdentifier>{54400504-dd8d-41fc-b8fa-013d59957937}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\third_party\zstd">
+      <UniqueIdentifier>{a6f0a8ba-bd3a-451d-a097-15d13398c9cf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\loaders">
+      <UniqueIdentifier>{7f4364cb-67f8-4e46-a26f-cd472c1a3f42}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\loaders">
+      <UniqueIdentifier>{a903a67a-443f-4af4-960f-2df8ee7f8209}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\third_party\ufbx">
+      <UniqueIdentifier>{87cd948f-95bd-44be-ae5f-d70194b5c276}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\examples">
+      <UniqueIdentifier>{cffaad7e-d93b-429a-9ab6-0d84409862a1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Maths.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Input.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Mesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Crylib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Material.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Model.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_transcoder.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_transcoder_internal.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_transcoder_uastc.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_astc_hdr_core.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_astc_helpers.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_containers.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_containers_impl.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\basic universal\basisu_file_headers.h">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\zstd\zstd.h">
+      <Filter>Source Files\third_party\zstd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Audio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Animation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\loaders\ModelLoader.h">
+      <Filter>Header Files\loaders</Filter>
+    </ClInclude>
+    <ClInclude Include="include\loaders\FBXLoader.h">
+      <Filter>Header Files\loaders</Filter>
+    </ClInclude>
+    <ClInclude Include="include\loaders\GLTFLoader.h">
+      <Filter>Header Files\loaders</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\ufbx\ufbx.h">
+      <Filter>Source Files\third_party\ufbx</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Crylib.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Texture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Mesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Input.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Maths.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Shader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Material.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Model.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\basic universal\basisu_transcoder.cpp">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\zstd\zstddeclib.c">
+      <Filter>Source Files\third_party\zstd</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Audio.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Animation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\loaders\ModelLoader.cpp">
+      <Filter>Source Files\loaders</Filter>
+    </ClCompile>
+    <ClCompile Include="src\loaders\FBXLoader.cpp">
+      <Filter>Source Files\loaders</Filter>
+    </ClCompile>
+    <ClCompile Include="src\loaders\GLTFLoader.cpp">
+      <Filter>Source Files\loaders</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\ufbx\ufbx.c">
+      <Filter>Source Files\third_party\ufbx</Filter>
+    </ClCompile>
+    <ClCompile Include="examples\Test.cpp">
+      <Filter>Source Files\examples</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_astc.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_astc_0_255.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_atc_55.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_atc_56.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_bc7_m5_alpha.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_bc7_m5_color.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_dxt1_5.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_dxt1_6.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_pvrtc2_45.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_pvrtc2_alpha_33.inc">
+      <Filter>Source Files\third_party\basic universal</Filter>
+    </None>
+  </ItemGroup>
+</Project>

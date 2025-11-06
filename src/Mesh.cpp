@@ -1,0 +1,123 @@
+#include "Mesh.h"
+
+namespace cl
+{
+    std::vector<Mesh*> Mesh::s_meshes;
+
+    Mesh::Mesh()
+        : m_vbh(BGFX_INVALID_HANDLE)
+        , m_ibh(BGFX_INVALID_HANDLE)
+        , m_uploaded(false)
+        , m_skinned(false)
+        , m_material(nullptr)
+    {
+        s_meshes.push_back(this);
+    }
+
+    Mesh::~Mesh()
+    {
+        Destroy();
+    }
+
+    Mesh::Mesh(const Mesh& other)
+        : m_vertices(other.m_vertices)
+        , m_indices(other.m_indices)
+        , m_vbh(BGFX_INVALID_HANDLE)
+        , m_ibh(BGFX_INVALID_HANDLE)
+        , m_uploaded(false)
+        , m_skinned(other.m_skinned)
+        , m_material(other.m_material)
+    {
+        Upload();
+        s_meshes.push_back(this);
+    }
+
+    void Mesh::SetVertices(const std::vector<Vertex>& vertices)
+    {
+        m_vertices = vertices;
+        m_uploaded = false;
+    }
+
+    void Mesh::SetIndices(const std::vector<uint16_t>& indices)
+    {
+        m_indices = indices;
+        m_uploaded = false;
+    }
+
+    void Mesh::Upload()
+    {
+        if (m_uploaded)
+            return;
+
+        if (m_vertices.empty() || m_indices.empty())
+            return;
+
+        bgfx::VertexLayout layout;
+        layout.begin()
+            .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Tangent, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Bitangent, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+            .add(bgfx::Attrib::Indices, 4, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Weight, 4, bgfx::AttribType::Float)
+            .end();
+
+        const bgfx::Memory* vbMem = bgfx::copy(m_vertices.data(),
+            static_cast<uint32_t>(m_vertices.size() * sizeof(Vertex)));
+        m_vbh = bgfx::createVertexBuffer(vbMem, layout);
+
+        const bgfx::Memory* ibMem = bgfx::copy(m_indices.data(),
+            static_cast<uint32_t>(m_indices.size() * sizeof(uint16_t)));
+        m_ibh = bgfx::createIndexBuffer(ibMem);
+
+        m_uploaded = true;
+    }
+
+    void Mesh::Destroy()
+    {
+        if (bgfx::isValid(m_vbh))
+        {
+            bgfx::destroy(m_vbh);
+            m_vbh = BGFX_INVALID_HANDLE;
+        }
+
+        if (bgfx::isValid(m_ibh))
+        {
+            bgfx::destroy(m_ibh);
+            m_ibh = BGFX_INVALID_HANDLE;
+        }
+
+        m_uploaded = false;
+
+        for (size_t i = 0; i < s_meshes.size(); ++i)
+        {
+            if (s_meshes[i] == this)
+            {
+                if (i != s_meshes.size() - 1)
+                    std::swap(s_meshes[i], s_meshes.back());
+
+                s_meshes.pop_back();
+                return;
+            }
+        }
+    }
+
+    void Mesh::SetMaterial(Material* material)
+    {
+        // Todo: Should this be set by default?
+        //if (m_material && material)
+        //    material->SetShaderParam("u_IsSkinned", m_material->GetShaderParam("u_IsSkinned"));
+
+        m_material = material;
+    }
+
+    void Mesh::SetSkinned(bool skinned)
+    {
+        m_skinned = skinned;
+
+        if (m_material)
+            m_material->SetShaderParam("u_IsSkinned", skinned);
+    }
+}

@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{eb63ead7-01f3-4977-bdef-d6b81d99d156}</ProjectGuid>
+    <RootNamespace>Crylib</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>$(SolutionDir)include;$(SolutionDir)third_party\bgfx\include;$(SolutionDir)third_party\bgfx\include\c99;$(SolutionDir)third_party\bimg\include;$(SolutionDir)third_party\bx\include\inline;$(SolutionDir)third_party\cgltf\include;$(SolutionDir)third_party\compat\include;$(SolutionDir)third_party\glfw\include;$(SolutionDir)third_party\stb_image\include;$(SolutionDir)third_party;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)third_party\bgfx\lib;$(SolutionDir)third_party\bimg\lib;$(SolutionDir)third_party\bx\lib;$(SolutionDir)third_party\glfw\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>$(SolutionDir)include;$(SolutionDir)third_party\bgfx\include;$(SolutionDir)third_party\bgfx\include\c99;$(SolutionDir)third_party\bimg\include;$(SolutionDir)third_party\bx\include\inline;$(SolutionDir)third_party\cgltf\include;$(SolutionDir)third_party\compat\include;$(SolutionDir)third_party\glfw\include;$(SolutionDir)third_party\stb_image\include;$(SolutionDir)third_party;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)third_party\bgfx\lib;$(SolutionDir)third_party\bimg\lib;$(SolutionDir)third_party\bx\lib;$(SolutionDir)third_party\glfw\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(SolutionDir)include;$(SolutionDir)third_party\bgfx\include;$(SolutionDir)third_party\bgfx\include\c99;$(SolutionDir)third_party\bimg\include;$(SolutionDir)third_party\bx\include\inline;$(SolutionDir)third_party\cgltf\include;$(SolutionDir)third_party\compat\include;$(SolutionDir)third_party\glfw\include;$(SolutionDir)third_party\stb_image\include;$(SolutionDir)third_party;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)third_party\bgfx\lib;$(SolutionDir)third_party\bimg\lib;$(SolutionDir)third_party\bx\lib;$(SolutionDir)third_party\glfw\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(SolutionDir)include;$(SolutionDir)third_party\bgfx\include;$(SolutionDir)third_party\bgfx\include\c99;$(SolutionDir)third_party\bimg\include;$(SolutionDir)third_party\bx\include\inline;$(SolutionDir)third_party\cgltf\include;$(SolutionDir)third_party\compat\include;$(SolutionDir)third_party\glfw\include;$(SolutionDir)third_party\stb_image\include;$(SolutionDir)third_party;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)third_party\bgfx\lib;$(SolutionDir)third_party\bimg\lib;$(SolutionDir)third_party\bx\lib;$(SolutionDir)third_party\glfw\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);PLATFORM_WINDOWS;BX_CONFIG_DEBUG=1;_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus /Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>bgfxDebug.lib;bimgDebug.lib;bimg_decodeDebug.lib;bxDebug.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);PLATFORM_WINDOWS;BX_CONFIG_DEBUG=1;_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus /Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>bgfxDebug.lib;bimgDebug.lib;bimg_decodeDebug.lib;bxDebug.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>a_DEBUG;_CONSOLE;%(PreprocessorDefinitions);PLATFORM_WINDOWS;BX_CONFIG_DEBUG=1;_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus /Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>bgfxDebug.lib;bimgDebug.lib;bimg_decodeDebug.lib;bxDebug.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);PLATFORM_WINDOWS;BX_CONFIG_DEBUG=1;_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus /Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>bgfxDebug.lib;bimgDebug.lib;bimg_decodeDebug.lib;bxDebug.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Animation.h" />
+    <ClInclude Include="include\Audio.h" />
+    <ClInclude Include="include\Config.h" />
+    <ClInclude Include="include\Crylib.h" />
+    <ClInclude Include="include\Input.h" />
+    <ClInclude Include="include\loaders\FBXLoader.h" />
+    <ClInclude Include="include\loaders\GLTFLoader.h" />
+    <ClInclude Include="include\loaders\ModelLoader.h" />
+    <ClInclude Include="include\Material.h" />
+    <ClInclude Include="include\Maths.h" />
+    <ClInclude Include="include\Mesh.h" />
+    <ClInclude Include="include\Model.h" />
+    <ClInclude Include="include\Renderer.h" />
+    <ClInclude Include="include\Shader.h" />
+    <ClInclude Include="include\Texture.h" />
+    <ClInclude Include="include\Window.h" />
+    <ClInclude Include="third_party\basic universal\basisu.h" />
+    <ClInclude Include="third_party\basic universal\basisu_astc_hdr_core.h" />
+    <ClInclude Include="third_party\basic universal\basisu_astc_helpers.h" />
+    <ClInclude Include="third_party\basic universal\basisu_containers.h" />
+    <ClInclude Include="third_party\basic universal\basisu_containers_impl.h" />
+    <ClInclude Include="third_party\basic universal\basisu_file_headers.h" />
+    <ClInclude Include="third_party\basic universal\basisu_transcoder.h" />
+    <ClInclude Include="third_party\basic universal\basisu_transcoder_internal.h" />
+    <ClInclude Include="third_party\basic universal\basisu_transcoder_uastc.h" />
+    <ClInclude Include="third_party\ufbx\ufbx.h" />
+    <ClInclude Include="third_party\zstd\zstd.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="examples\Test.cpp" />
+    <ClCompile Include="src\Animation.cpp" />
+    <ClCompile Include="src\Audio.cpp" />
+    <ClCompile Include="src\Crylib.cpp" />
+    <ClCompile Include="src\Input.cpp" />
+    <ClCompile Include="src\loaders\FBXLoader.cpp" />
+    <ClCompile Include="src\loaders\GLTFLoader.cpp" />
+    <ClCompile Include="src\loaders\ModelLoader.cpp" />
+    <ClCompile Include="src\Material.cpp" />
+    <ClCompile Include="src\Maths.cpp" />
+    <ClCompile Include="src\Mesh.cpp" />
+    <ClCompile Include="src\Model.cpp" />
+    <ClCompile Include="src\Shader.cpp" />
+    <ClCompile Include="src\Texture.cpp" />
+    <ClCompile Include="src\Renderer.cpp" />
+    <ClCompile Include="src\Window.cpp" />
+    <ClCompile Include="third_party\basic universal\basisu_transcoder.cpp" />
+    <ClCompile Include="third_party\ufbx\ufbx.c" />
+    <ClCompile Include="third_party\zstd\zstddeclib.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="third_party\basic universal\basisu_transcoder_tables_astc.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_astc_0_255.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_atc_55.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_atc_56.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_bc7_m5_alpha.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_bc7_m5_color.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_dxt1_5.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_dxt1_6.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_pvrtc2_45.inc" />
+    <None Include="third_party\basic universal\basisu_transcoder_tables_pvrtc2_alpha_33.inc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
