@@ -1,94 +1,45 @@
-# Crylib
+This product includes the BGFX library, which is licensed under the BSD 2-Clause License.
+This product includes the Basis Universal encoder, which is licensed under the Apache License 2.0.
 
-**Crylib** is a lightweight and modern **C++ game and graphics library** built for **simplicity, speed, and modularity**.  
-It’s designed for both **game development** and **general-purpose rendering or software**, offering a flexible and efficient framework for building real-time applications with ease.
+------------------------
+BGFX License (BSD-2-Clause)
+------------------------
+Copyright 2010-2025 Branimir Karadzic
 
-Crylib provides a unified API for rendering, animation, audio, and asset management, while maintaining a minimal setup and fast runtime performance.
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
----
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions, and the following disclaimer.
 
-## Features
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions, and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
 
-- **Lightweight and modular**
-- **High-level / easy to use API**
-- **2D and 3D rendering**
-- **Skeletal and skinned mesh animation**
-- **PBR materials** (Physically Based Rendering)
-- **Lighting system** with multiple light types
-- **3D and 2D audio** with full **spatial sound** support
-- **FBX and glTF model loading**
-- **Supports a wide range of image formats**
-- **Simple and efficient**
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
 
----
+------------------------
+Basis Universal encoder License (Apache-2.0)
+------------------------
+Copyright 2020-2025 Binomial LLC
 
-## Supported Rendering APIs
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-- DirectX 11, DirectX 12  
-- OpenGL, OpenGL ES  
-- Vulkan, Metal  
-- WebGL 1.0, WebGL 2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
----
-
-## Supported Platforms
-
-- Windows  
-- macOS  
-- Linux  
-- Android  
-- iOS  
-- Web (via WebAssembly / Emscripten)
-
----
-
-## Supported Compilers
-
-- Clang 11 and above  
-- GCC 11 and above  
-- VS2022 and above  
-- Apple Clang 12 and above  
-
----
-
-## Supported Asset Formats
-
-### 3D Model Formats
-- FBX and glTF / GLB
-
-### Image Formats
-- PNG, JPG / JPEG, BMP, TGA, PSD, GIF, HDR, PIC, and PNM
-
-### Audio Formats
-- WAV, MP3, FLAC, OGG, and MOD / XM / IT / S3M
-
----
-
-## Documentation
-
-Documentation is **coming soon** and will cover:
-- Setup and initialization
-- Rendering 2D and 3D scenes
-- Loading and animating models
-- Using PBR materials and lighting
-- Audio playback and spatial sound
-- Platform-specific configuration
-
----
-
-## Examples
-
-The [`/examples`](./examples) directory contains practical examples demonstrating:
-- Rendering 2D and 3D scenes
-- Playing animations and handling skeletal rigs
-- Using lighting and materials
-- Audio playback and spatial sound
-- Asset loading (FBX, glTF, textures, etc.)
-
----
-
-## License
-
-Crylib is licensed under the [MIT License](./LICENSE).
-
-This project uses **[bgfx](https://github.com/bkaradzic/bgfx)**, which is licensed under the **BSD-2-Clause License**:
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
