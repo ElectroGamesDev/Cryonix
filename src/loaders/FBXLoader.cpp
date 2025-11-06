@@ -5,7 +5,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <stb_image.h>
-#include "basic universal/basisu_transcoder.h"
+#include "basis universal/basisu_transcoder.h"
 #include "ufbx/ufbx.h"
 #include <set>
 
