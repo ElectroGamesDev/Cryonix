@@ -20,6 +20,14 @@ namespace cl
         Vector2 operator-(const Vector2& other) const { return Vector2(x - other.x, y - other.y); }
         Vector2 operator*(float scalar) const { return Vector2(x * scalar, y * scalar); }
         Vector2 operator/(float scalar) const { return Vector2(x / scalar, y / scalar); }
+        Vector2& operator+=(const Vector2& other) { x += other.x; y += other.y; return *this; }
+        Vector2& operator-=(const Vector2& other) { x -= other.x; y -= other.y; return *this; }
+        Vector2& operator*=(float scalar) { x *= scalar; y *= scalar; return *this; }
+        Vector2& operator/=(float scalar) { x /= scalar; y /= scalar; return *this; }
+        Vector2 operator-() const { return { -x, -y }; }
+        bool operator==(const Vector2& other) const { return x == other.x && y == other.y; }
+        bool operator!=(const Vector2& other) const { return !(*this == other); }
+        friend Vector2 operator*(float scalar, const Vector2& v) { return { v.x * scalar, v.y * scalar }; }
     };
 
     struct Vector3
@@ -50,6 +58,14 @@ namespace cl
         Vector3 operator-(const Vector3& other) const { return Vector3(x - other.x, y - other.y, z - other.z); }
         Vector3 operator*(float scalar) const { return Vector3(x * scalar, y * scalar, z * scalar); }
         Vector3 operator/(float scalar) const { return Vector3(x / scalar, y / scalar, z / scalar); }
+        Vector3& operator+=(const Vector3& other) { x += other.x; y += other.y; z += other.z; return *this; }
+        Vector3& operator-=(const Vector3& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+        Vector3& operator*=(float scalar) { x *= scalar; y *= scalar; z *= scalar; return *this; }
+        Vector3& operator/=(float scalar) { x /= scalar; y /= scalar; z /= scalar; return *this; }
+        Vector3 operator-() const { return { -x, -y, -z }; }
+        bool operator==(const Vector3& other) const { return x == other.x && y == other.y && z == other.z; }
+        bool operator!=(const Vector3& other) const { return !(*this == other); }
+        friend Vector3 operator*(float scalar, const Vector3& v) { return { v.x * scalar, v.y * scalar, v.z * scalar }; }
     };
 
     struct Vector4
@@ -75,6 +91,13 @@ namespace cl
         Matrix4 ToMatrix() const;
 
         Quaternion operator*(const Quaternion& other) const;
+        Quaternion& operator*=(const Quaternion& q) {
+            *this = *this * q;
+            return *this;
+        }
+        bool operator==(const Quaternion& other) const { return x == other.x && y == other.y && z == other.z && w == other.w; }
+        bool operator!=(const Quaternion& other) const { return !(*this == other); }
+        Quaternion operator-() const { return { -x, -y, -z, -w }; }
     };
 
     struct Matrix4
@@ -110,6 +133,24 @@ namespace cl
         Matrix4 Inverse() const;
 
         Matrix4 operator*(const Matrix4& other) const;
+        Matrix4& operator*=(const Matrix4& other) {
+            *this = *this * other;
+            return *this;
+        }
+
+        bool operator==(const Matrix4& other) const
+        {
+            constexpr float EPSILON = 1e-6f;
+            for (int i = 0; i < 16; ++i)
+            {
+                if (fabsf(m[i] - other.m[i]) > EPSILON)
+                    return false;
+            }
+            return true;
+        }
+
+        bool operator!=(const Matrix4& other) const { return !(*this == other); }
+
     };
 
     struct Color
