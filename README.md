@@ -3,7 +3,7 @@
 **Crylib** is a lightweight and modern **C++ game and graphics library** built for **simplicity, speed, and modularity**.  
 It’s designed for both **game development** and **general-purpose rendering or software**, offering a flexible and efficient framework for building real-time applications with ease.
 
-Crylib provides a unified API for rendering, animation, audio, and asset management, while maintaining a minimal setup and fast runtime performance.
+Crylib provides a unified API for rendering, animation, audio, and input, while maintaining a minimal setup and fast runtime performance.
 
 ---
 
