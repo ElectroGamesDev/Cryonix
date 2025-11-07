@@ -21,6 +21,9 @@ int main()
     cl::Model* model = cl::LoadModel("models/truck/binary/CesiumMilkTruck.glb");
     //cl::Model* model = cl::LoadModel("models/Tree.glb"); // Todo: This isnt loading/rendering properly
     //cl::Model* model = cl::LoadModel("models/Tree3.fbx");
+    //cl::Model* model = cl::LoadModel("models/Animated Character/Character_anim.fbx");
+    //cl::Model* model = cl::LoadModel("models/gltf/Sponza/source/scene.glb");
+    //cl::Model* model = cl::LoadModel("models/OBJ/sibenik/sibenik.obj");
 
     //model->SetPosition({0,-0.5f,0});
     model->SetRotation({0, 90, 0});
@@ -34,6 +37,7 @@ int main()
         false); // Use Target
 
     // Animations
+    //model->PlayAnimationByIndex(1);
     //cl::Model* model = cl::LoadModel("models/AnimatedTriangle/AnimatedTriangle.gltf"); // Todo: Not working
     //cl::Model* model = cl::LoadModel("models/Animated Character/Character_anim.fbx"); // Todo: not working
     //model->PlayAnimationByIndex(0, true);
@@ -113,6 +117,8 @@ int main()
     //static bgfx::UniformHandle u_Proj = bgfx::createUniform("u_Proj", bgfx::UniformType::Mat4);
     //static bgfx::UniformHandle u_CamPos = bgfx::createUniform("u_CameraPos", bgfx::UniformType::Vec4);
 
+    cl::Clear(cl::Color(48, 48, 48, 255)); // This sets the background color. It can go anywhere after cl:Init() and can be used after camera.Begin() to let multiple cameras have different backgrounds
+
     while (!cl::ShouldClose())
     {
         cl::Update();
@@ -124,16 +130,22 @@ int main()
 
         // Movement // Todo: add delta time once it's implemented
         if (cl::Input::IsKeyDown(cl::KeyCode::W))
-            camera.MoveForward(0.005f);
+            camera.MoveForward(5 * cl::GetFrameTime());
 
         if (cl::Input::IsKeyDown(cl::KeyCode::A))
-            camera.MoveLeft(0.005f);
+            camera.MoveLeft(5 * cl::GetFrameTime());
 
         if (cl::Input::IsKeyDown(cl::KeyCode::S))
-            camera.MoveBackward(0.005f);
+            camera.MoveBackward(5 * cl::GetFrameTime());
 
         if (cl::Input::IsKeyDown(cl::KeyCode::D))
-            camera.MoveRight(0.005f);
+            camera.MoveRight(5 * cl::GetFrameTime());
+
+        if (cl::Input::IsKeyDown(cl::KeyCode::E))
+            camera.MoveUp(5 * cl::GetFrameTime());
+
+        if (cl::Input::IsKeyDown(cl::KeyCode::Q))
+            camera.MoveDown(5 * cl::GetFrameTime());
 
         // Mouse Look
         static float lookSensitivity = 0.1f;
@@ -155,13 +167,10 @@ int main()
         // Rendering
         camera.Begin();
 
-        cl::Clear(cl::Color(48, 48, 48, 255)); // Must go after camera.Begin()
-
         cl::GetDefaultShader()->SetUniform("u_CameraPos", { camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z });
 
-
         // Animations
-        //model->UpdateAnimation(deltaTime);
+        //model->UpdateAnimation(cl::GetFrameTime());
 
         //model->Rotate(0.0f, deltaTime * 90.0f, 0.0f); // Todo: Add delta time
 
