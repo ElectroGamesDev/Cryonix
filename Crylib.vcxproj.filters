@@ -123,6 +123,9 @@
     <ClInclude Include="include\Camera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\loaders\OBJLoader.h">
+      <Filter>Header Files\loaders</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Crylib.cpp">
@@ -187,6 +190,9 @@
     </ClCompile>
     <ClCompile Include="src\Camera2D.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\loaders\OBJLoader.cpp">
+      <Filter>Source Files\loaders</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

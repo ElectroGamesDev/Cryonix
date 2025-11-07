@@ -1,6 +1,7 @@
 #include "loaders/ModelLoader.h"
 #include "loaders/GLTFLoader.h"
 #include "loaders/FBXLoader.h"
+#include "loaders/OBJLoader.h"
 #include <filesystem>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -8,6 +9,7 @@
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
+#include <iostream>
 
 namespace cl
 {
@@ -19,6 +21,10 @@ namespace cl
             return LoadGLTF(filePath);
         else if (path.extension() == ".fbx")
             return LoadFBX(filePath);
+        else if (path.extension() == ".obj")
+            return LoadOBJ(filePath);
+
+        std::cout << "[ERROR] Failed to load model \"" << filePath << "\". The model format may not be supported." << std::endl;
 
         return nullptr;
     }

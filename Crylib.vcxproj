@@ -161,6 +161,7 @@
     <ClInclude Include="include\loaders\FBXLoader.h" />
     <ClInclude Include="include\loaders\GLTFLoader.h" />
     <ClInclude Include="include\loaders\ModelLoader.h" />
+    <ClInclude Include="include\loaders\OBJLoader.h" />
     <ClInclude Include="include\Material.h" />
     <ClInclude Include="include\Maths.h" />
     <ClInclude Include="include\Mesh.h" />
@@ -192,6 +193,7 @@
     <ClCompile Include="src\loaders\FBXLoader.cpp" />
     <ClCompile Include="src\loaders\GLTFLoader.cpp" />
     <ClCompile Include="src\loaders\ModelLoader.cpp" />
+    <ClCompile Include="src\loaders\OBJLoader.cpp" />
     <ClCompile Include="src\Material.cpp" />
     <ClCompile Include="src\Maths.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
