@@ -114,18 +114,22 @@ namespace cl
         if (!m_playing || m_paused || !m_currentClip || !m_skeleton)
             return;
 
+        float duration = m_currentClip->GetDuration();
+        if (duration <= 0.0f)
+            return;
+
         m_currentTime += deltaTime * m_speed;
 
         if (m_currentTime > m_currentClip->GetDuration())
         {
             if (m_loop)
             {
-                while (m_currentTime > m_currentClip->GetDuration())
-                    m_currentTime -= m_currentClip->GetDuration();
+                while (m_currentTime > duration)
+                    m_currentTime -= duration;
             }
             else
             {
-                m_currentTime = m_currentClip->GetDuration();
+                m_currentTime = duration;
                 m_playing = false;
             }
         }
