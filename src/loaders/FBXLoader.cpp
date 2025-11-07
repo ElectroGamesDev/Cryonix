@@ -360,13 +360,78 @@ namespace cl
                                     // Skinning
                                     if (hasSkin && skin)
                                     {
-                                        uint32_t vertex = primitive->vertex_indices.data ? primitive->vertex_indices.data[index] : index;
-                                        ufbx_skin_vertex sv = skin->vertices.data[vertex];
-                                        for (int c = 0; c < 4 && c < static_cast<int>(sv.num_weights); ++c)
+                                        // Determine the vertex index into skin->vertices array
+                                        uint32_t vertexIndex = 0;
+                                        if (primitive->vertex_indices.data)
                                         {
-                                            ufbx_skin_weight sw = skin->weights.data[sv.weight_begin + c];
-                                            v.boneIndices[c] = static_cast<float>(sw.cluster_index);
-                                            v.boneWeights[c] = static_cast<float>(sw.weight);
+                                            // Ensure index is within vertex_indices.count
+                                            if (index >= primitive->vertex_indices.count)
+                                                vertexIndex = UINT32_MAX;
+                                            else
+                                                vertexIndex = primitive->vertex_indices.data[index];
+                                        }
+                                        else
+                                        {
+                                            vertexIndex = index;
+                                        }
+
+                                        // Validate vertexIndex and existence in skin->vertices
+                                        if (vertexIndex != UINT32_MAX && vertexIndex < skin->vertices.count)
+                                        {
+                                            const ufbx_skin_vertex& sv = skin->vertices.data[vertexIndex];
+
+                                            // Clamp number of weights
+                                            int numWeights = static_cast<int>(sv.num_weights);
+                                            if (numWeights > 4)
+                                                numWeights = 4;
+
+                                            if (numWeights < 0)
+                                                numWeights = 0;
+
+                                            float totalWeight = 0.0f;
+
+                                            for (int c = 0; c < 4; ++c)
+                                            {
+                                                v.boneIndices[c] = 0.0f;
+                                                v.boneWeights[c] = 0.0f;
+                                            }
+
+                                            for (int c = 0; c < numWeights; ++c)
+                                            {
+                                                uint32_t weightIndex = static_cast<uint32_t>(sv.weight_begin) + static_cast<uint32_t>(c);
+
+                                                // Bounds-check the weightIndex
+                                                if (weightIndex >= skin->weights.count)
+                                                    break;  // Malformed data. Skip remaining weights
+
+                                                const ufbx_skin_weight& sw = skin->weights.data[weightIndex];
+
+                                                // cluster_index should refer to a cluster/bone index
+                                                // Map FBX cluster indicies to skeleton bone indicies
+                                                int clusterIndex = static_cast<int>(sw.cluster_index);
+                                                if (clusterIndex < 0)
+                                                    continue;
+
+                                                v.boneIndices[c] = static_cast<float>(clusterIndex);
+                                                v.boneWeights[c] = static_cast<float>(sw.weight);
+                                                totalWeight += v.boneWeights[c];
+                                            }
+
+                                            // Normalize weights to sum to 1.0 if total > 0
+                                            if (totalWeight > 0.0f)
+                                            {
+                                                for (int c = 0; c < 4; ++c)
+                                                    v.boneWeights[c] /= totalWeight;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // If there's no valid skin vertex entry then leave boneIndices/weights at 0
+                                            for (int c = 0; c < 4; ++c)
+                                            {
+                                                v.boneIndices[c] = 0.0f;
+                                                v.boneWeights[c] = 0.0f;
+                                            }
                                         }
                                     }
 
