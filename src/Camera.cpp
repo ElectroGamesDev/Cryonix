@@ -213,12 +213,12 @@ namespace cl
 
     void Camera::MoveLeft(float distance)
     {
-        Move({ -1.0f, 0.0f, 0.0f }, distance);
+        Move({ 1.0f, 0.0f, 0.0f }, distance);
     }
 
     void Camera::MoveRight(float distance)
     {
-        Move({ 1.0f, 0.0f, 0.0f }, distance);
+        Move({ -1.0f, 0.0f, 0.0f }, distance);
     }
 
     void Camera::MoveUp(float distance)
