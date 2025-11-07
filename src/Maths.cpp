@@ -1,7 +1,11 @@
 #include "Maths.h"
+#include <random>
+#include <chrono>
 
 namespace cl
 {
+    static std::mt19937 s_rng;
+
     Matrix4 Matrix4::Perspective(float fov, float aspect, float nearPlane, float farPlane)
     {
         Matrix4 result;
@@ -465,5 +469,31 @@ namespace cl
             inv.m[i] = inv.m[i] * det;
 
         return inv;
+    }
+
+    // Random numbers
+
+    void SetRandomSeed(unsigned int seed)
+    {
+        s_rng.seed(seed);
+    }
+
+    void RandomizeSeed()
+    {
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        unsigned int seed = static_cast<unsigned int>(now);
+        s_rng.seed(seed);
+    }
+
+    int GetRandomInt(int min, int max)
+    {
+        std::uniform_int_distribution<int> dist(min, max);
+        return dist(s_rng);
+    }
+
+    float GetRandomFloat(float min, float max)
+    {
+        std::uniform_real_distribution<float> dist(min, max);
+        return dist(s_rng);
     }
 }

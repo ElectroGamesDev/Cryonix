@@ -168,4 +168,19 @@ namespace cl
         static Color Green() { return Color(0, 255, 0, 255); }
         static Color Blue() { return Color(0, 0, 255, 255); }
     };
+
+    // Random numbers
+    
+    // Sets the random number generator seed to a fixed value
+    void SetRandomSeed(unsigned int seed);
+
+    // Randomizes the random number generator seed
+    void RandomizeSeed();
+
+    // Returns a random integer between min and max (inclusive)
+    int GetRandomInt(int min, int max);
+
+    // Returns a random float value between min (inclusive) and max (exclusive)
+    float GetRandomFloat(float min, float max);
+
 }
