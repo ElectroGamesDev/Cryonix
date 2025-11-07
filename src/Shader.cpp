@@ -39,6 +39,7 @@ namespace cl
     std::vector<uint8_t> ReadFileBytes(std::string_view path)
     {
         std::vector<uint8_t> data;
+
         std::ifstream in(path.data(), std::ios::binary | std::ios::ate);
         if (!in)
             return data;
@@ -116,7 +117,7 @@ namespace cl
 
     void* Shader::LoadShaderFile(std::string_view path) const
     {
-        auto bytes = ReadFileBytes(path.data());
+        auto bytes = ReadFileBytes(path);
         if (bytes.empty())
         {
             std::cerr << "[ERROR] Shader - failed to load \"" << path << "\". The file is either empty or not found." << std::endl;
