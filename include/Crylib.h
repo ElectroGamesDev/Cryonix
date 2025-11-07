@@ -21,11 +21,44 @@ namespace cl
     void Update();
     void Shutdown();
 
-    // Window queries
+    // Window State and Properties
     bool ShouldClose();
     void SetWindowTitle(const char* title);
     void GetWindowSize(int& width, int& height);
+    bool IsWindowReady();
+    bool IsWindowFullscreen();
+    bool IsWindowHidden();
+    bool IsWindowMinimized();
+    bool IsWindowMaximized();
+    bool IsWindowFocused();
+    bool IsWindowResized();
+    void ToggleFullscreen();
+    void MaximizeWindow();
+    void MinimizeWindow();
+    void RestoreWindow();
+    void SetWindowOpacity(float opacity);
+    void SetWindowIcon(const char* iconPath);
+    int GetMonitorCount();
+    int GetCurrentMonitor();
+    void GetMonitorSize(int monitor, int& width, int& height);
+    int GetMonitorRefreshRate(int monitor);
+    void GetMonitorPosition(int monitor, int& x, int& y);
+    const char* GetMonitorName(int monitor);
 
-    // Direct access to subsystems if needed
+    // Time and FPS
+    float GetFrameTime();
+    /// An alias for GetFrameTime()
+    float GetDeltaTime();
+    double GetTime();
+    int GetFrameCount();
+    void SetTargetFPS(int fps);
+    int GetFPS();
+
+    // System Info
+    const char* GetPlatformName();
+    int GetCPUCoreCount();
+
+    // Misc
+    const Config& GetConfig();
     Window* GetWindow();
 }

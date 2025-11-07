@@ -2,6 +2,9 @@
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio/include/miniaudio.h"
+#include <chrono>
+#include <thread>
+#include <iostream>
 
 namespace cl
 {
@@ -10,6 +13,40 @@ namespace cl
         Window* window;
         Config config;
         bool initialized;
+
+        // Time management
+        std::chrono::steady_clock::time_point startTime;
+        std::chrono::steady_clock::time_point lastFrameTime;
+        std::chrono::steady_clock::time_point currentFrameTime;
+        float deltaTime;
+        int frameCount;
+        int targetFPS;
+        double frameTimeAccumulator;
+        int fpsCounter;
+        int currentFPS;
+
+        // Window state tracking
+        bool wasResized;
+        int lastWidth;
+        int lastHeight;
+
+        CrylibState()
+            : window(nullptr)
+            , initialized(false)
+            , deltaTime(0.0f)
+            , frameCount(0)
+            , targetFPS(0)
+            , frameTimeAccumulator(0.0)
+            , fpsCounter(0)
+            , currentFPS(0)
+            , wasResized(false)
+            , lastWidth(0)
+            , lastHeight(0)
+        {
+            startTime = std::chrono::steady_clock::now();
+            lastFrameTime = startTime;
+            currentFrameTime = startTime;
+        }
     };
 
     static CrylibState* s_crylib = nullptr;
@@ -43,12 +80,18 @@ namespace cl
             return false;
         }
 
+        // Store initial window size
+        s_crylib->window->GetWindowSize(s_crylib->lastWidth, s_crylib->lastHeight);
+
         // Initialize input system
         Input::Init();
 
         // Initialize the audio system
         if (config.audioEnabled)
             cl::InitAudioDevice();
+
+        // Set random seed
+        RandomizeSeed();
 
         // Initialize renderer
         if (!InitRenderer(s_crylib->window, config))
@@ -72,10 +115,74 @@ namespace cl
         if (!s_crylib || !s_crylib->initialized)
             return;
 
-        // Poll window events
-        s_crylib->window->PollEvents();
+        static auto lastTime = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float delta = std::chrono::duration<float>(now - lastTime).count();
 
-        // Update input state
+        // Frame rate limiting
+        if (s_crylib->targetFPS > 0)
+        {
+            float targetFrameTime = 1.0f / s_crylib->targetFPS;
+            float sleepThreshold = 0.002f;
+
+            while (delta < targetFrameTime)
+            {
+                float remaining = targetFrameTime - delta;
+
+                if (remaining > sleepThreshold)
+                {
+                    auto sleepDur = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<float>(remaining * 0.9f));
+
+                    if (sleepDur.count() > 0)
+                    {
+#ifdef __EMSCRIPTEN__ // Todo: I'm not sure if this this define is correct
+                        emscripten_sleep(static_cast<unsigned int>(sleepDur.count() / 1000));
+#else
+                        std::this_thread::sleep_for(sleepDur);
+#endif                    
+                    }
+                }
+                else
+                {
+                    std::this_thread::yield();
+                }
+
+                now = std::chrono::steady_clock::now();
+                delta = std::chrono::duration<float>(now - lastTime).count();
+            }
+        }
+
+        // Clamp delta to prevent spikes
+        constexpr float MAX_DELTA = 0.1f;
+        s_crylib->deltaTime = std::min(delta, MAX_DELTA);
+
+        // Update timing
+        s_crylib->lastFrameTime = lastTime;
+        s_crylib->currentFrameTime = now;
+        lastTime = now;
+
+        // FPS Counter
+        s_crylib->frameTimeAccumulator += s_crylib->deltaTime;
+        s_crylib->fpsCounter++;
+
+        if (s_crylib->frameTimeAccumulator >= 1.0f)
+        {
+            s_crylib->currentFPS = s_crylib->fpsCounter;
+            s_crylib->fpsCounter = 0;
+            s_crylib->frameTimeAccumulator = 0.0f;
+        }
+
+        s_crylib->frameCount++;
+
+        // Window handling
+        int currentWidth, currentHeight;
+        s_crylib->window->GetWindowSize(currentWidth, currentHeight);
+        s_crylib->wasResized = (currentWidth != s_crylib->lastWidth || currentHeight != s_crylib->lastHeight);
+        s_crylib->lastWidth = currentWidth;
+        s_crylib->lastHeight = currentHeight;
+
+        // Events and input
+        s_crylib->window->PollEvents();
         Input::Update();
     }
 
@@ -139,6 +246,8 @@ namespace cl
         s_crylib = nullptr;
     }
 
+    // Window State and Properties
+
     bool ShouldClose()
     {
         if (!s_crylib || !s_crylib->window)
@@ -166,8 +275,208 @@ namespace cl
         }
     }
 
+    bool IsWindowReady()
+    {
+        return s_crylib && s_crylib->window && s_crylib->initialized;
+    }
+
+    bool IsWindowFullscreen()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return false;
+        return s_crylib->window->IsFullscreen();
+    }
+
+    bool IsWindowHidden()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return false;
+        return s_crylib->window->IsHidden();
+    }
+
+    bool IsWindowMinimized()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return false;
+        return s_crylib->window->IsMinimized();
+    }
+
+    bool IsWindowMaximized()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return false;
+        return s_crylib->window->IsMaximized();
+    }
+
+    bool IsWindowFocused()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return false;
+        return s_crylib->window->IsFocused();
+    }
+
+    bool IsWindowResized()
+    {
+        return s_crylib ? s_crylib->wasResized : false;
+    }
+
+    void ToggleFullscreen()
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->ToggleFullscreen();
+    }
+
+    void MaximizeWindow()
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->Maximize();
+    }
+
+    void MinimizeWindow()
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->Minimize();
+    }
+
+    void RestoreWindow()
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->Restore();
+    }
+
+    void SetWindowOpacity(float opacity)
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->SetOpacity(opacity);
+    }
+
+    void SetWindowIcon(const char* iconPath)
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->SetIcon(iconPath);
+    }
+
+    int GetMonitorCount()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return 0;
+        return s_crylib->window->GetMonitorCount();
+    }
+
+    int GetCurrentMonitor()
+    {
+        if (!s_crylib || !s_crylib->window)
+            return 0;
+        return s_crylib->window->GetCurrentMonitor();
+    }
+
+    void GetMonitorSize(int monitor, int& width, int& height)
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->GetMonitorSize(monitor, width, height);
+        else
+        {
+            width = 0;
+            height = 0;
+        }
+    }
+
+    int GetMonitorRefreshRate(int monitor)
+    {
+        if (!s_crylib || !s_crylib->window)
+            return 0;
+        return s_crylib->window->GetMonitorRefreshRate(monitor);
+    }
+
+    void GetMonitorPosition(int monitor, int& x, int& y)
+    {
+        if (s_crylib && s_crylib->window)
+            s_crylib->window->GetMonitorPosition(monitor, x, y);
+        else
+        {
+            x = 0;
+            y = 0;
+        }
+    }
+
+    const char* GetMonitorName(int monitor)
+    {
+        if (!s_crylib || !s_crylib->window)
+            return "Unknown";
+        return s_crylib->window->GetMonitorName(monitor);
+    }
+
+    // Time and FPS
+    float GetFrameTime()
+    {
+        return s_crylib ? s_crylib->deltaTime : 0.0f;
+    }
+
+    float GetDeltaTime()
+    {
+        return GetFrameTime();
+    }
+
+    double GetTime()
+    {
+        if (!s_crylib)
+            return 0.0;
+
+        auto now = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed = now - s_crylib->startTime;
+        return elapsed.count();
+    }
+
+    int GetFrameCount()
+    {
+        return s_crylib ? s_crylib->frameCount : 0;
+    }
+
+    void SetTargetFPS(int fps)
+    {
+        if (s_crylib)
+            s_crylib->targetFPS = fps;
+        else
+            std::cout << "[WARNING] SetTargetFrame() must be called after Init()" << std::endl;
+    }
+
+    int GetFPS()
+    {
+        return s_crylib ? s_crylib->currentFPS : 0;
+    }
+
+    // System Info
+    const char* GetPlatformName()
+    {
+#ifdef PLATFORM_WINDOWS
+        return "Windows";
+#elif defined(PLATFORM_LINUX)
+        return "Linux";
+#elif defined(PLATFORM_MACOS)
+        return "macOS";
+#elif defined(PLATFORM_IOS)
+        return "IOS";
+#elif defined(PLATFORM_ANDROID)
+        return "Android";
+#else
+        return "Unknown";
+#endif
+    }
+
+    int GetCPUCoreCount()
+    {
+        return static_cast<int>(std::thread::hardware_concurrency());
+    }
+
+    // Misc
     Window* GetWindow()
     {
         return s_crylib ? s_crylib->window : nullptr;
+    }
+
+    const Config& GetConfig()
+    {
+        static Config emptyConfig;
+        return s_crylib ? s_crylib->config : emptyConfig;
     }
 }
