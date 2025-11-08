@@ -126,6 +126,9 @@
     <ClInclude Include="include\loaders\OBJLoader.h">
       <Filter>Header Files\loaders</Filter>
     </ClInclude>
+    <ClInclude Include="include\Primitives.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Crylib.cpp">
@@ -193,6 +196,9 @@
     </ClCompile>
     <ClCompile Include="src\loaders\OBJLoader.cpp">
       <Filter>Source Files\loaders</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Primitives.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

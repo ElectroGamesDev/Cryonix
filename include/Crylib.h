@@ -13,6 +13,7 @@
 #include "Audio.h"
 #include "Camera.h"
 #include "Camera2D.h"
+#include "Primitives.h"
 
 namespace cl
 {

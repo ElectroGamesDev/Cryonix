@@ -93,6 +93,9 @@ namespace cl
         // Set random seed
         RandomizeSeed();
 
+        // Initialize primitives
+        //InitPrimitives(); // The default shader isn't created yet
+
         // Initialize renderer
         if (!InitRenderer(s_crylib->window, config))
         {
