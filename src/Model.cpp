@@ -125,9 +125,23 @@ namespace cl
         MarkTransformDirty();
     }
 
+    void Model::SetPosition(float x, float y, float z)
+    {
+        m_position.x = x;
+        m_position.y = y;
+        m_position.z = z;
+        MarkTransformDirty();
+    }
+
     void Model::SetRotation(const Vector3& rot)
     {
         m_rotationQuat = Quaternion::FromEuler(rot.y, rot.x, rot.z);
+        MarkTransformDirty();
+    }
+
+    void Model::SetRotation(float x, float y, float z)
+    {
+        m_rotationQuat = Quaternion::FromEuler(y, x, z);
         MarkTransformDirty();
     }
 
@@ -150,6 +164,14 @@ namespace cl
     void Model::SetScale(const Vector3& scale)
     {
         m_scale = scale;
+        MarkTransformDirty();
+    }
+
+    void Model::SetScale(float x, float y, float z)
+    {
+        m_scale.x = x;
+        m_scale.y = y;
+        m_scale.z = z;
         MarkTransformDirty();
     }
 
