@@ -9,8 +9,8 @@
 
 namespace cl
 {
-    bgfx::UniformHandle u_boneMatrices = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle u_skinningControl = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_boneMatrices = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_skinningControl = BGFX_INVALID_HANDLE;
 
     RendererState* s_renderer = nullptr;
 
