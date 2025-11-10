@@ -84,7 +84,10 @@ namespace cl
     void SetViewTransform(const Matrix4& view, const Matrix4& projection);
 
     void DrawMesh(Mesh* mesh, const Matrix4& transform);
+    void DrawMesh(Mesh* mesh, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
     void DrawMesh(Mesh* mesh, const Vector3& position, const Vector3& rotation, const Vector3& scale);
+    void DrawModel(Model* model, const Matrix4& transform);
+    void DrawModel(Model* model, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
     void DrawModel(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale);
     void DrawModel(Model* model);
 

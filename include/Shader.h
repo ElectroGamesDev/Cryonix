@@ -31,6 +31,8 @@ namespace cl
             std::array<float, 4>,
             std::array<float, 16>,
             Texture*> value;
+        bgfx::UniformHandle cachedUniform = BGFX_INVALID_HANDLE;
+        uint8_t cachedStage = 255;
     };
 
     class Shader
@@ -61,7 +63,7 @@ namespace cl
         void SetUniform(std::string_view name, const float(&m4)[16]);
         void SetUniform(std::string_view name, Texture* texture);
 
-        bool HasUniform(std::string_view name) const;
+        //bool HasUniform(std::string_view name) const;
 
         bgfx::ProgramHandle GetHandle() const;
 
@@ -78,6 +80,8 @@ namespace cl
         void* LoadShaderFile(std::string_view path) const;
 
         bgfx::UniformHandle GetOrCreateUniform(std::string_view name, UniformType type, uint16_t num) const;
+        bgfx::UniformHandle GetOrCreateSamplerUniform(std::string_view name) const;
+        uint8_t GetSamplerStage(std::string_view name) const;
         void SetUniformInternal(std::string_view name, const float v) const;
         void SetUniformInternal(std::string_view name, const int v) const;
         void SetUniformInternal(std::string_view name, const float(&v2)[2]) const;

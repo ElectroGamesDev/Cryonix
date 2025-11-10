@@ -251,13 +251,13 @@ namespace cl
         Material* material = mesh->GetMaterial();
         Shader* shader = material->GetShader();
 
-        // In BGFX, uniforms must be set each frame
+        // Uniforms must be set each frame
 
-        // Apply global uniforms
-        shader->ApplyUniforms(); // Todo: This should be called once per frame, but then store the changed uniforms so only they are reset.
+        //// Apply global uniforms
+        //shader->ApplyUniforms();
 
-        // Apply material specific uniforms
-        material->ApplyShaderUniforms();
+        //// Apply material specific uniforms
+        //material->ApplyShaderUniforms();
 
         // Apply PBR material map uniforms
         material->ApplyPBRUniforms();
@@ -279,24 +279,39 @@ namespace cl
         s_renderer->drawStats.indicies += mesh->GetIndices().size();
     }
 
+    void DrawMesh(Mesh* mesh, const Vector3& position, const Quaternion& rotation, const Vector3& scale)
+    {
+        if (!mesh)
+            return;
+
+        Matrix4 transform = Matrix4::Translate(position) * rotation.ToMatrix() * Matrix4::Scale(scale);
+
+        DrawMesh(mesh, transform);
+    }
+
     void DrawMesh(Mesh* mesh, const Vector3& position, const Vector3& rotation, const Vector3& scale)
     {
         if (!mesh)
             return;
 
         Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
-        Matrix4 transform = Matrix4::Translate(position) * rotQuat.ToMatrix() * Matrix4::Scale(scale);
 
-        // Todo: Allow this to be used in batch calls. Potentially use bgfx::setInstanceDataBuffer(). Maybe can create like a Batch class/struct with a DrawBatch() function
-        DrawMesh(mesh, transform);
+        DrawMesh(mesh, position, rotQuat, scale);
     }
 
-    void DrawModel(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale)
+    void DrawModel(Model* model, const Matrix4& transform)
+    {
+        if (!model)
+            return;
+
+        for (const auto& mesh : model->GetMeshes())
+            DrawMesh(mesh.get(), transform);
+    }
+
+    void DrawModel(Model* model, const Vector3& position, const Quaternion& rotation, const Vector3& scale)
     {
         if (!model || !model->HasMeshes())
             return;
-
-        // Todo: Fix this to do a single batch call. Potentially use bgfx::setInstanceDataBuffer(). Maybe can create like a Batch class/struct with a DrawBatch() function
 
         Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
         Matrix4 baseTransform = Matrix4::Translate(position) * rotQuat.ToMatrix() * Matrix4::Scale(scale);
@@ -358,6 +373,16 @@ namespace cl
         }
     }
 
+    void DrawModel(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale)
+    {
+        if (!model || !model->HasMeshes())
+            return;
+
+        Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
+
+        DrawModel(model, position, rotQuat, scale);
+    }
+
     void DrawModel(Model* model)
     {
         if (!model)
@@ -365,7 +390,6 @@ namespace cl
 
         //model->UpdateTransformMatrix();
 
-        // Todo: Fix this to do a single batch call. Potentially use bgfx::setInstanceDataBuffer(). Maybe can create like a Batch class/struct with a DrawBatch() function
         for (const auto& mesh : model->GetMeshes())
             DrawModel(model, model->GetPosition(), model->GetRotation(), model->GetScale()); // Todo: Rotation quaternion is already calcuated, so calculating it again the other DrawModel() is unnecessary
     }

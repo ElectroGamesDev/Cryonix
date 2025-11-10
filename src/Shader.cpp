@@ -230,14 +230,13 @@ namespace cl
 
     // Uniform functions
 
-    bool Shader::HasUniform(std::string_view name) const
-    {
-        if (!m_impl)
-            return false;
+    //bool Shader::HasUniform(std::string_view name) const
+    //{
+    //    if (!m_impl)
+    //        return false;
 
-        // Todo: Should this check from m_Uniforms instead?
-        return m_impl->uniforms.find(name.data()) != m_impl->uniforms.end() || m_impl->samplerUniforms.find(name.data()) != m_impl->samplerUniforms.end();
-    }
+    //    return m_impl->uniforms.find(name.data()) != m_impl->uniforms.end() || m_impl->samplerUniforms.find(name.data()) != m_impl->samplerUniforms.end();
+    //}
 
     void Shader::SetUniform(std::string_view name, float v)
     {
@@ -379,50 +378,113 @@ namespace cl
         return h;
     }
 
+
+    bgfx::UniformHandle Shader::GetOrCreateSamplerUniform(std::string_view name) const
+    {
+        if (!m_impl)
+            return BGFX_INVALID_HANDLE;
+
+        auto it = m_impl->samplerUniforms.find(name.data());
+        if (it != m_impl->samplerUniforms.end())
+            return it->second;
+
+        bgfx::UniformHandle h = bgfx::createUniform(name.data(), bgfx::UniformType::Sampler);
+        if (!bgfx::isValid(h))
+        {
+            std::cerr << "Shader::SetUniform: failed to create sampler uniform " << name << std::endl;
+            return BGFX_INVALID_HANDLE;
+        }
+
+        m_impl->samplerUniforms[name.data()] = h;
+        return h;
+    }
+
+
+    uint8_t Shader::GetSamplerStage(std::string_view name) const
+    {
+        if (!m_impl)
+            return 255;
+
+        auto it = m_impl->samplerStages.find(name.data());
+        if (it != m_impl->samplerStages.end())
+            return it->second;
+
+        static const std::unordered_map<std::string_view, uint8_t> g_samplerStages = {
+            {"u_AlbedoMap", 0},
+            {"u_NormalMap", 1},
+            {"u_MetallicMap", 2},
+            {"u_RoughnessMap", 3},
+            {"u_MetallicRoughnessMap", 4},
+            {"u_AOMap", 5},
+            {"u_EmissiveMap", 6},
+            {"u_HeightMap", 7},
+            {"u_OpacityMap", 8}
+        };
+
+        auto globalIt = g_samplerStages.find(name);
+        if (globalIt == g_samplerStages.end())
+        {
+            std::cerr << "[Error] Shader::SetUniform - Unknown sampler name " << name << std::endl;
+            return 255;
+        }
+
+        uint8_t stage = globalIt->second;
+        m_impl->samplerStages[name.data()] = stage;
+        return stage;
+    }
+
+
     void Shader::SetUniformInternal(std::string_view name, float v) const
     {
         if (!m_impl)
             return;
 
-        float tmp[4] = { v, 0.0f, 0.0f, 0.0f };
+        thread_local float tmp[4] = { v, 0.0f, 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
+
         if (bgfx::isValid(h))
             bgfx::setUniform(h, tmp);
     }
+
 
     void Shader::SetUniformInternal(std::string_view name, int v) const
     {
         if (!m_impl)
             return;
 
-        // Pack int as float in a Vec4 uniform
-        float tmp[4] = { static_cast<float>(v), 0.0f, 0.0f, 0.0f };
+        thread_local float tmp[4] = { static_cast<float>(v), 0.0f, 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
+
         if (bgfx::isValid(h))
             bgfx::setUniform(h, tmp);
     }
+
 
     void Shader::SetUniformInternal(std::string_view name, const float(&v2)[2]) const
     {
         if (!m_impl)
             return;
 
-        float tmp[4] = { v2[0], v2[1], 0.0f, 0.0f };
+        thread_local float tmp[4] = { v2[0], v2[1], 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
+
         if (bgfx::isValid(h))
             bgfx::setUniform(h, tmp);
     }
+
 
     void Shader::SetUniformInternal(std::string_view name, const float(&v3)[3]) const
     {
         if (!m_impl)
             return;
 
-        float tmp[4] = { v3[0], v3[1], v3[2], 0.0f };
+        thread_local float tmp[4] = { v3[0], v3[1], v3[2], 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
+
         if (bgfx::isValid(h))
             bgfx::setUniform(h, tmp);
     }
+
 
     void Shader::SetUniformInternal(std::string_view name, const float(&v4)[4]) const
     {
@@ -434,6 +496,7 @@ namespace cl
             bgfx::setUniform(h, v4);
     }
 
+
     void Shader::SetUniformInternal(std::string_view name, const float(&m4)[16]) const
     {
         if (!m_impl)
@@ -444,63 +507,23 @@ namespace cl
             bgfx::setUniform(h, m4);
     }
 
+
     void Shader::SetUniformInternal(std::string_view name, const Texture* texture) const
     {
         if (!m_impl || !texture)
             return;
+
         bgfx::TextureHandle handle = texture->GetHandle();
         if (!bgfx::isValid(handle))
             return;
-        // Get or create sampler uniform
-        auto itSampler = m_impl->samplerUniforms.find(name.data());
-        bgfx::UniformHandle sampler = BGFX_INVALID_HANDLE;
-        if (itSampler == m_impl->samplerUniforms.end())
-        {
-            sampler = bgfx::createUniform(name.data(), bgfx::UniformType::Sampler);
-            if (!bgfx::isValid(sampler))
-            {
-                std::cerr << "Shader::SetUniform: failed to create sampler uniform " << name << std::endl;
-                return;
-            }
-            m_impl->samplerUniforms[name.data()] = sampler;
-        }
-        else
-            sampler = itSampler->second;
 
-        uint8_t stage = 255;
-        if (name == "u_AlbedoMap")
-            stage = 0;
-        else if (name == "u_NormalMap")
-            stage = 1;
-        else if (name == "u_MetallicMap")
-            stage = 2;
-        else if (name == "u_RoughnessMap")
-            stage = 3;
-        else if (name == "u_MetallicRoughnessMap")
-            stage = 4;
-        else if (name == "u_AOMap")
-            stage = 5;
-        else if (name == "u_EmissiveMap")
-            stage = 6;
-        else if (name == "u_HeightMap")
-            stage = 7;
-        else if (name == "u_OpacityMap")
-            stage = 8;
-        else
-        {
-            std::cerr << "[Error] Shader::SetUniform - Unknown sampler name " << name << std::endl;
+        bgfx::UniformHandle sampler = GetOrCreateSamplerUniform(name);
+        if (!bgfx::isValid(sampler))
             return;
-        }
 
-        // Cache the fixed stage if not already set
-        auto itStage = m_impl->samplerStages.find(name.data());
-        if (itStage == m_impl->samplerStages.end())
-            m_impl->samplerStages[name.data()] = stage;
-        else if (itStage->second != stage)
-        {
-            std::cerr << "[Error] Shader::SetUniform - Stage mismatch for " << name << std::endl;
+        uint8_t stage = GetSamplerStage(name);
+        if (stage == 255)
             return;
-        }
 
         bgfx::setTexture(stage, sampler, handle);
     }
@@ -513,36 +536,68 @@ namespace cl
         return m_impl->program;
     }
 
+
     void Shader::ApplyUniforms()
     {
         for (ShaderUniform& param : m_Uniforms)
         {
-            std::visit([this, param](auto&& arg) {
+            std::visit([this, &param](auto&& arg)
+            {
                 using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, float>) {
-                    SetUniformInternal(param.name, arg);
+
+                if (!bgfx::isValid(param.cachedUniform))
+                {
+                    if constexpr (std::is_same_v<T, Texture*>)
+                    {
+                        param.cachedUniform = GetOrCreateSamplerUniform(param.name);
+                        param.cachedStage = GetSamplerStage(param.name);
+                    }
+                    else
+                    {
+                        UniformType utype;
+
+                        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int> || std::is_same_v<T, std::array<float, 2>> || std::is_same_v<T, std::array<float, 3>> || std::is_same_v<T, std::array<float, 4>>)
+                            utype = UniformType::Vec4;
+                        else if constexpr (std::is_same_v<T, std::array<float, 16>>)
+                            utype = UniformType::Mat4;
+
+                        param.cachedUniform = GetOrCreateUniform(param.name, utype, 1);
+                    }
                 }
-                else if constexpr (std::is_same_v<T, int>) {
-                    SetUniformInternal(param.name, arg);
+
+                if constexpr (std::is_same_v<T, Texture*>)
+                {
+                    if (arg && bgfx::isValid(param.cachedUniform) && param.cachedStage != 255)
+                    {
+                        bgfx::TextureHandle handle = arg->GetHandle();
+                        if (bgfx::isValid(handle))
+                            bgfx::setTexture(param.cachedStage, param.cachedUniform, handle);
+                    }
                 }
-                else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
-                    const float(&v2)[2] = *reinterpret_cast<const float(*)[2]>(arg.data());
-                    SetUniformInternal(param.name, v2);
-                }
-                else if constexpr (std::is_same_v<T, std::array<float, 3>>) {
-                    const float(&v3)[3] = *reinterpret_cast<const float(*)[3]>(arg.data());
-                    SetUniformInternal(param.name, v3);
-                }
-                else if constexpr (std::is_same_v<T, std::array<float, 4>>) {
-                    const float(&v4)[4] = *reinterpret_cast<const float(*)[4]>(arg.data());
-                    SetUniformInternal(param.name, v4);
-                }
-                else if constexpr (std::is_same_v<T, std::array<float, 16>>) {
-                    const float(&m4)[16] = *reinterpret_cast<const float(*)[16]>(arg.data());
-                    SetUniformInternal(param.name, m4);
-                }
-                else if constexpr (std::is_same_v<T, Texture*>) {
-                    SetUniformInternal(param.name, arg);
+                else if (bgfx::isValid(param.cachedUniform))
+                {
+                    if constexpr (std::is_same_v<T, float>)
+                    {
+                        float tmp[4] = { arg, 0.0f, 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, int>)
+                    {
+                        float tmp[4] = { static_cast<float>(arg), 0.0f, 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 2>>)
+                    {
+                        float tmp[4] = { arg[0], arg[1], 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 3>>)
+                    {
+                        float tmp[4] = { arg[0], arg[1], arg[2], 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 4>> || std::is_same_v<T, std::array<float, 16>>)
+                        bgfx::setUniform(param.cachedUniform, arg.data());
                 }
             }, param.value);
         }

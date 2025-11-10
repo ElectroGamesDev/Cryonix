@@ -140,45 +140,76 @@ namespace cl
     {
         for (ShaderUniform& param : m_ShaderParams)
         {
-            std::visit([this, param](auto&& arg) {
+            std::visit([this, &param](auto&& arg)
+            {
                 using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, float>) {
-                    m_shader->SetUniformInternal(param.name, arg);
+
+                if (!bgfx::isValid(param.cachedUniform))
+                {
+                    if constexpr (std::is_same_v<T, Texture*>)
+                    {
+                        param.cachedUniform = m_shader->GetOrCreateSamplerUniform(param.name);
+                        param.cachedStage = m_shader->GetSamplerStage(param.name);
+                    }
+                    else
+                    {
+                        UniformType utype;
+
+                        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int> || std::is_same_v<T, std::array<float, 2>> || std::is_same_v<T, std::array<float, 3>> || std::is_same_v<T, std::array<float, 4>>)
+                            utype = UniformType::Vec4;
+                        else if constexpr (std::is_same_v<T, std::array<float, 16>>)
+                            utype = UniformType::Mat4;
+
+                        param.cachedUniform = m_shader->GetOrCreateUniform(param.name, utype, 1);
+                    }
                 }
-                else if constexpr (std::is_same_v<T, int>) {
-                    m_shader->SetUniformInternal(param.name, arg);
+
+                if constexpr (std::is_same_v<T, Texture*>)
+                {
+                    if (arg && bgfx::isValid(param.cachedUniform) && param.cachedStage != 255)
+                    {
+                        bgfx::TextureHandle handle = arg->GetHandle();
+                        if (bgfx::isValid(handle))
+                            bgfx::setTexture(param.cachedStage, param.cachedUniform, handle);
+                    }
                 }
-                else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
-                    const float(&v2)[2] = *reinterpret_cast<const float(*)[2]>(arg.data());
-                    m_shader->SetUniformInternal(param.name, v2);
+                else if (bgfx::isValid(param.cachedUniform))
+                {
+                    if constexpr (std::is_same_v<T, float>)
+                    {
+                        float tmp[4] = { arg, 0.0f, 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, int>)
+                    {
+                        float tmp[4] = { static_cast<float>(arg), 0.0f, 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 2>>)
+                    {
+                        float tmp[4] = { arg[0], arg[1], 0.0f, 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 3>>)
+                    {
+                        float tmp[4] = { arg[0], arg[1], arg[2], 0.0f };
+                        bgfx::setUniform(param.cachedUniform, tmp);
+                    }
+                    else if constexpr (std::is_same_v<T, std::array<float, 4>> || std::is_same_v<T, std::array<float, 16>>)
+                        bgfx::setUniform(param.cachedUniform, arg.data());
                 }
-                else if constexpr (std::is_same_v<T, std::array<float, 3>>) {
-                    const float(&v3)[3] = *reinterpret_cast<const float(*)[3]>(arg.data());
-                    m_shader->SetUniformInternal(param.name, v3);
-                }
-                else if constexpr (std::is_same_v<T, std::array<float, 4>>) {
-                    const float(&v4)[4] = *reinterpret_cast<const float(*)[4]>(arg.data());
-                    m_shader->SetUniformInternal(param.name, v4);
-                }
-                else if constexpr (std::is_same_v<T, std::array<float, 16>>) {
-                    const float(&m4)[16] = *reinterpret_cast<const float(*)[16]>(arg.data());
-                    m_shader->SetUniformInternal(param.name, m4);
-                }
-                else if constexpr (std::is_same_v<T, Texture*>) {
-                    m_shader->SetUniformInternal(param.name, arg);
-                }
-                }, param.value);
+            }, param.value);
         }
     }
 
     void Material::ApplyPBRUniforms()
     {
-        // Todo: Is calling this function each frame the best solution? The issue is, if two materials use the same shader, then it will need to call it each frame for each material 
-
         if (!m_shader)
             return;
 
-        //m_shader->m_updateUniforms = true; // This shouldn't be needed since PBR global shader uniforms should not be set
+        // We're not using SetUniformInternal() here because unordered_map lookups can get expensive when doing it tens of thousands of times each frame.
+
+        // Todo: This map code needs to be optimized
 
         // Build material flags as vec4 uniforms to match shader expectations
         float flags0[4] = {
@@ -187,7 +218,12 @@ namespace cl
             HasMaterialMap(MaterialMapType::Metallic) ? 1.0f : 0.0f,   // z = hasMetallic
             HasMaterialMap(MaterialMapType::Roughness) ? 1.0f : 0.0f   // w = hasRoughness
         };
-        m_shader->SetUniformInternal("u_MaterialFlags0", flags0);
+
+        if (!bgfx::isValid(m_hMaterialFlags0))
+            m_hMaterialFlags0 = m_shader->GetOrCreateUniform("u_MaterialFlags0", UniformType::Vec4, 1);
+
+        if (bgfx::isValid(m_hMaterialFlags0))
+            bgfx::setUniform(m_hMaterialFlags0, flags0);
 
         float flags1[4] = {
             HasMaterialMap(MaterialMapType::MetallicRoughness) ? 1.0f : 0.0f, // x = hasMetallicRoughness
@@ -195,59 +231,74 @@ namespace cl
             HasMaterialMap(MaterialMapType::Emissive) ? 1.0f : 0.0f,          // z = hasEmissive
             HasMaterialMap(MaterialMapType::Opacity) ? 1.0f : 0.0f            // w = hasOpacity
         };
-        m_shader->SetUniformInternal("u_MaterialFlags1", flags1);
 
-        // Set texture samplers
-        if (HasMaterialMap(MaterialMapType::Albedo))
-            m_shader->SetUniformInternal("u_AlbedoMap", GetMaterialMap(MaterialMapType::Albedo));
+        if (!bgfx::isValid(m_hMaterialFlags1))
+            m_hMaterialFlags1 = m_shader->GetOrCreateUniform("u_MaterialFlags1", UniformType::Vec4, 1);
 
-        if (HasMaterialMap(MaterialMapType::Normal))
-            m_shader->SetUniformInternal("u_NormalMap", GetMaterialMap(MaterialMapType::Normal));
+        if (bgfx::isValid(m_hMaterialFlags1))
+            bgfx::setUniform(m_hMaterialFlags1, flags1);
 
-        if (HasMaterialMap(MaterialMapType::Metallic))
-            m_shader->SetUniformInternal("u_MetallicMap", GetMaterialMap(MaterialMapType::Metallic));
+        // Texture samplers
+        auto bindTexture = [&](MaterialMapType type, const char* uniformName, bgfx::UniformHandle& hSampler, uint8_t& stage)
+            {
+                if (HasMaterialMap(type))
+                {
+                    if (!bgfx::isValid(hSampler))
+                    {
+                        hSampler = m_shader->GetOrCreateSamplerUniform(uniformName);
+                        stage = m_shader->GetSamplerStage(uniformName);
+                    }
 
-        if (HasMaterialMap(MaterialMapType::Roughness))
-            m_shader->SetUniformInternal("u_RoughnessMap", GetMaterialMap(MaterialMapType::Roughness));
+                    if (bgfx::isValid(hSampler) && stage != 255)
+                        bgfx::setTexture(stage, hSampler, GetMaterialMap(type)->GetHandle());
+                }
+            };
 
-        if (HasMaterialMap(MaterialMapType::MetallicRoughness))
-            m_shader->SetUniformInternal("u_MetallicRoughnessMap", GetMaterialMap(MaterialMapType::MetallicRoughness));
+        bindTexture(MaterialMapType::Albedo, "u_AlbedoMap", m_hSamplerAlbedo, m_stageAlbedo);
+        bindTexture(MaterialMapType::Normal, "u_NormalMap", m_hSamplerNormal, m_stageNormal);
+        bindTexture(MaterialMapType::Metallic, "u_MetallicMap", m_hSamplerMetallic, m_stageMetallic);
+        bindTexture(MaterialMapType::Roughness, "u_RoughnessMap", m_hSamplerRoughness, m_stageRoughness);
+        bindTexture(MaterialMapType::MetallicRoughness, "u_MetallicRoughnessMap", m_hSamplerMetallicRoughness, m_stageMetallicRoughness);
+        bindTexture(MaterialMapType::AO, "u_AOMap", m_hSamplerAO, m_stageAO);
+        bindTexture(MaterialMapType::Emissive, "u_EmissiveMap", m_hSamplerEmissive, m_stageEmissive);
+        bindTexture(MaterialMapType::Height, "u_HeightMap", m_hSamplerHeight, m_stageHeight);
+        bindTexture(MaterialMapType::Opacity, "u_OpacityMap", m_hSamplerOpacity, m_stageOpacity);
 
-        if (HasMaterialMap(MaterialMapType::AO))
-            m_shader->SetUniformInternal("u_AOMap", GetMaterialMap(MaterialMapType::AO));
-
-        if (HasMaterialMap(MaterialMapType::Emissive))
-            m_shader->SetUniformInternal("u_EmissiveMap", GetMaterialMap(MaterialMapType::Emissive));
-
-        if (HasMaterialMap(MaterialMapType::Height))
-            m_shader->SetUniformInternal("u_HeightMap", GetMaterialMap(MaterialMapType::Height));
-
-        if (HasMaterialMap(MaterialMapType::Opacity))
-            m_shader->SetUniformInternal("u_OpacityMap", GetMaterialMap(MaterialMapType::Opacity));
-
-        // Set material properties (tints/fallback values)
-        // Convert Color (0-255) to float (0.0-1.0)
-        // u_Albedo expects vec4 (RGB albedo, A for base opacity)
+        // Set material properties
         float albedo[4] = {
             m_albedo.r / 255.0f,
             m_albedo.g / 255.0f,
             m_albedo.b / 255.0f,
             m_albedo.a / 255.0f
         };
-        m_shader->SetUniformInternal("u_Albedo", albedo);
 
-        // u_EmissiveParams expects vec4 (RGB emissive, A unused)
+        if (!bgfx::isValid(m_hAlbedo))
+            m_hAlbedo = m_shader->GetOrCreateUniform("u_Albedo", UniformType::Vec4, 1);
+
+        if (bgfx::isValid(m_hAlbedo))
+            bgfx::setUniform(m_hAlbedo, albedo);
+
         float emissiveParams[4] = {
             m_emissive.r / 255.0f,
             m_emissive.g / 255.0f,
             m_emissive.b / 255.0f,
-            0.0f  // Alpha unused for emissive
+            0.0f
         };
-        m_shader->SetUniformInternal("u_EmissiveParams", emissiveParams);
+
+        if (!bgfx::isValid(m_hEmissiveParams))
+            m_hEmissiveParams = m_shader->GetOrCreateUniform("u_EmissiveParams", UniformType::Vec4, 1);
+
+        if (bgfx::isValid(m_hEmissiveParams))
+            bgfx::setUniform(m_hEmissiveParams, emissiveParams);
 
         // u_MaterialProps expects vec4 (x=metallic, y=roughness, z=ao, w=unused)
         float materialProps[4] = { m_metallic, m_roughness, m_ao, 0.0f };
-        m_shader->SetUniformInternal("u_MaterialProps", materialProps);
+
+        if (!bgfx::isValid(m_hMaterialProps))
+            m_hMaterialProps = m_shader->GetOrCreateUniform("u_MaterialProps", UniformType::Vec4, 1);
+
+        if (bgfx::isValid(m_hMaterialProps))
+            bgfx::setUniform(m_hMaterialProps, materialProps);
     }
 
     void Material::Clear()

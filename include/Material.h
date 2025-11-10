@@ -110,5 +110,30 @@ namespace cl
 
         std::unordered_map<std::string, MaterialParam> m_UserParams;
         std::vector<ShaderUniform> m_ShaderParams;
+
+        bgfx::UniformHandle m_hMaterialFlags0 = BGFX_INVALID_HANDLE;
+        bgfx::UniformHandle m_hMaterialFlags1 = BGFX_INVALID_HANDLE;
+        bgfx::UniformHandle m_hAlbedo = BGFX_INVALID_HANDLE;
+        bgfx::UniformHandle m_hEmissiveParams = BGFX_INVALID_HANDLE;
+        bgfx::UniformHandle m_hMaterialProps = BGFX_INVALID_HANDLE;
+        bgfx::UniformHandle m_hSamplerAlbedo = BGFX_INVALID_HANDLE;
+
+        uint8_t m_stageAlbedo = 255;
+        bgfx::UniformHandle m_hSamplerNormal = BGFX_INVALID_HANDLE;
+        uint8_t m_stageNormal = 255;
+        bgfx::UniformHandle m_hSamplerMetallic = BGFX_INVALID_HANDLE;
+        uint8_t m_stageMetallic = 255;
+        bgfx::UniformHandle m_hSamplerRoughness = BGFX_INVALID_HANDLE;
+        uint8_t m_stageRoughness = 255;
+        bgfx::UniformHandle m_hSamplerMetallicRoughness = BGFX_INVALID_HANDLE;
+        uint8_t m_stageMetallicRoughness = 255;
+        bgfx::UniformHandle m_hSamplerAO = BGFX_INVALID_HANDLE;
+        uint8_t m_stageAO = 255;
+        bgfx::UniformHandle m_hSamplerEmissive = BGFX_INVALID_HANDLE;
+        uint8_t m_stageEmissive = 255;
+        bgfx::UniformHandle m_hSamplerHeight = BGFX_INVALID_HANDLE;
+        uint8_t m_stageHeight = 255;
+        bgfx::UniformHandle m_hSamplerOpacity = BGFX_INVALID_HANDLE;
+        uint8_t m_stageOpacity = 255;
     };
 }
