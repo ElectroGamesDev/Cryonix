@@ -146,9 +146,7 @@ namespace cl
                     }
                 }
                 else
-                {
                     std::this_thread::yield();
-                }
 
                 now = std::chrono::steady_clock::now();
                 delta = std::chrono::duration<float>(now - lastTime).count();
