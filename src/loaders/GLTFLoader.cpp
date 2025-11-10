@@ -10,7 +10,7 @@
 
 namespace cl
 {
-    Model* LoadGLTF(std::string_view filePath)
+    Model* LoadGLTF(std::string_view filePath, bool mergeMeshes)
     {
         if (!std::filesystem::exists(filePath))
         {
@@ -445,7 +445,9 @@ namespace cl
                         mesh->SetMaterial(material);
                         mesh->SetVertices(vertices);
                         mesh->SetIndices(indices);
-                        mesh->Upload();
+                        if (!mergeMeshes)
+                            mesh->Upload();
+
                         model->AddMesh(mesh);
                     }
                 }
@@ -505,7 +507,6 @@ namespace cl
                 std::cout << "[WARNING] Animation '" << clip->GetName() << "' has both skeletal and node channels. Using skeletal mode.\n";
             }
             else // No valid channels
-
                 clip->SetAnimationType(AnimationType::NodeBased);
 
             // Second pass: load animation channels based on type
@@ -669,6 +670,15 @@ namespace cl
         }
 
         model->SetNodeCount(static_cast<int>(data->nodes_count));
+
+        if (mergeMeshes)
+        {
+            if (!model->MergeMeshes())
+            {
+                for (auto& mesh : model->GetMeshes())
+                    mesh.get()->Upload();
+            }
+        }
 
         cgltf_free(data);
         return model;

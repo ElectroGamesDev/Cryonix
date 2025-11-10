@@ -44,12 +44,12 @@ namespace cl
         m_uploaded = false;
     }
 
-    const std::vector<Vertex>& Mesh::GetVertices()
+    std::vector<Vertex>& Mesh::GetVertices()
     {
         return m_vertices;
     }
 
-    const std::vector<uint32_t>& Mesh::GetIndices()
+    std::vector<uint32_t>& Mesh::GetIndices()
     {
         return m_indices;
     }

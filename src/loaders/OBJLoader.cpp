@@ -81,7 +81,7 @@ namespace cl
         return static_cast<size_t>(hwThreads >= 2 ? hwThreads - 1 : 1);
     }
 
-    Model* LoadOBJ(std::string_view filePath)
+    Model* LoadOBJ(std::string_view filePath, bool mergeMeshes)
     {
         if (!std::filesystem::exists(filePath))
         {
@@ -648,8 +648,19 @@ namespace cl
 
         for (auto& mesh : allMeshes)
         {
-            mesh->Upload();
+            if (!mergeMeshes)
+                mesh->Upload();
+
             model->AddMesh(mesh);
+        }
+
+        if (mergeMeshes)
+        {
+            if (!model->MergeMeshes())
+            {
+                for (auto& mesh : model->GetMeshes())
+                    mesh.get()->Upload();
+            }
         }
 
         return model;

@@ -7,7 +7,7 @@
 
 namespace cl
 {
-    Model* LoadGLTF(std::string_view filePath);
+    Model* LoadGLTF(std::string_view filePath, bool mergeMeshes = true);
 
     /// Load animation by index
     AnimationClip* LoadAnimationFromGLTF(std::string_view filePath, size_t animationIndex = 0);

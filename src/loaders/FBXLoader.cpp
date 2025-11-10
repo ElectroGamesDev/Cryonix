@@ -314,7 +314,7 @@ namespace cl
         }
     }
 
-    Model* LoadFBX(std::string_view filePath)
+    Model* LoadFBX(std::string_view filePath, bool mergeMeshes)
     {
         if (!std::filesystem::exists(filePath))
         {
@@ -758,7 +758,10 @@ namespace cl
                         mesh->SetMaterial(material);
                         mesh->SetVertices(vertices);
                         mesh->SetIndices(indices);
-                        mesh->Upload();
+
+                        if (!mergeMeshes)
+                            mesh->Upload();
+
                         model->AddMesh(mesh);
                     }
                 }
@@ -811,13 +814,9 @@ namespace cl
 
                             // Check if it's a joint/bone
                             if (nodeToJointMap.find(node) != nodeToJointMap.end())
-                            {
                                 hasSkeletalChannels = true;
-                            }
                             else
-                            {
                                 hasNodeChannels = true;
-                            }
                         }
                     }
                 }
@@ -830,7 +829,7 @@ namespace cl
                 clip->SetAnimationType(AnimationType::NodeBased);
             else if (hasSkeletalChannels && hasNodeChannels)
             {
-                // Mixed animation. Priortize skeleton
+                // Mixed animation types, priortize skeleton
                 clip->SetAnimationType(AnimationType::Skeletal);
                 std::cout << "[WARNING] Animation '" << clip->GetName() << "' has both skeletal and node channels. Using skeletal mode.\n";
             }
@@ -839,9 +838,7 @@ namespace cl
 
             // Process channels based on type
             if (clip->GetAnimationType() == AnimationType::Skeletal)
-            {
                 ProcessSkeletalAnimationChannels(uanim, nodeToJointMap, clip, maxTime);
-            }
             else // NodeBased
                 ProcessNodeAnimationChannels(uanim, nodeToIndexMap, clip, maxTime);
 
@@ -850,6 +847,15 @@ namespace cl
         }
 
         model->SetNodeCount(static_cast<int>(data->nodes.count));
+
+        if (mergeMeshes)
+        {
+            if (!model->MergeMeshes())
+            {
+                for (auto& mesh : model->GetMeshes())
+                    mesh.get()->Upload();
+            }
+        }
 
         ufbx_free_scene(data);
         return model;

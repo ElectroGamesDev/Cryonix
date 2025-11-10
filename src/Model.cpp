@@ -2,6 +2,8 @@
 #include "Material.h"
 #include <algorithm>
 #include <iostream>
+#include <unordered_map>
+#include <future>
 
 namespace cl
 {
@@ -115,6 +117,117 @@ namespace cl
             return nullptr;
 
         return m_meshes[index];
+    }
+
+    bool Model::MergeMeshes()
+    {
+        if (m_meshes.empty() || HasSkeleton() || GetAnimationCount() > 0)
+            return false;
+        
+        // Todo: This likely breaks GetNodeCount(), but it doesn't look like that function is currently used
+
+        std::unordered_map<Material*, std::vector<std::shared_ptr<Mesh>>> groups;
+
+        // Group non-skinned meshes by material
+        for (const auto& mesh : m_meshes)
+        {
+            if (!mesh || mesh->IsSkinned())
+                continue;
+
+            Material* mat = mesh->GetMaterial();
+            groups[mat].push_back(mesh);
+        }
+
+        std::vector<std::shared_ptr<Mesh>> newMeshes;
+        newMeshes.reserve(m_meshes.size());
+
+        // Add skinned meshes to the newMeshes vector since they will not be merged
+        for (const auto& mesh : m_meshes)
+        {
+            if (!mesh || mesh->IsSkinned())
+                newMeshes.push_back(mesh);
+        }
+
+        std::vector<std::future<std::shared_ptr<Mesh>>> futures;
+
+        for (auto& pair : groups)
+        {
+            auto& group = pair.second;
+            if (group.size() <= 1)
+            {
+                if (!group.empty())
+                {
+                    auto mesh = group.front();
+                    mesh->Upload();
+                    newMeshes.push_back(mesh);
+                }
+
+                continue;
+            }
+
+            // Merge groups
+            auto mergeGroup = [&group, mat = pair.first]() -> std::shared_ptr<Mesh>
+            {
+                size_t totalVertices = 0, totalIndices = 0;
+                for (const auto& mesh : group)
+                {
+                    totalVertices += mesh->GetVertices().size();
+                    totalIndices += mesh->GetIndices().size();
+                }
+
+                auto mergedMesh = std::make_shared<Mesh>();
+                auto& mergedVertices = mergedMesh->GetVertices();
+                auto& mergedIndices = mergedMesh->GetIndices();
+                mergedVertices.reserve(totalVertices);
+                mergedIndices.reserve(totalIndices);
+
+                uint32_t vertexOffset = 0;
+                for (const auto& mesh : group)
+                {
+                    const auto& srcVertices = mesh->GetVertices();
+                    const auto& srcIndices = mesh->GetIndices();
+
+                    size_t oldSize = mergedVertices.size();
+                    mergedVertices.resize(oldSize + srcVertices.size());
+                    std::memcpy(mergedVertices.data() + oldSize, srcVertices.data(), srcVertices.size() * sizeof(Vertex));
+
+                    oldSize = mergedIndices.size();
+                    mergedIndices.resize(oldSize + srcIndices.size());
+                    const uint32_t* srcIdxPtr = srcIndices.data();
+                    uint32_t* destIdxPtr = mergedIndices.data() + oldSize;
+                    for (size_t i = 0; i < srcIndices.size(); ++i)
+                        destIdxPtr[i] = srcIdxPtr[i] + vertexOffset;
+
+                    vertexOffset += static_cast<uint32_t>(srcVertices.size());
+                }
+
+                mergedMesh->SetMaterial(mat);
+                mergedMesh->SetSkinned(false);
+                return mergedMesh;
+            };
+
+            // Only use multi threading if there's 2 or more groups
+            if (groups.size() < 2)
+            {
+                auto merged = mergeGroup();
+                merged->Upload();
+                newMeshes.push_back(merged);
+            }
+            else
+                futures.push_back(std::async(std::launch::async, mergeGroup));
+        }
+
+        // Upload meshes on main thread when the merging is finished
+        for (auto& future : futures)
+        {
+            auto merged = future.get();
+            merged->Upload();
+            newMeshes.push_back(merged);
+        }
+
+        m_meshes = std::move(newMeshes);
+
+        return true;
     }
 
     void Model::SetMaterial(Material* material)

@@ -13,16 +13,16 @@
 
 namespace cl
 {
-    Model* LoadModel(std::string_view filePath)
+    Model* LoadModel(std::string_view filePath, bool mergeMeshes)
     {
         std::filesystem::path path = filePath;
 
         if (path.extension() == ".gltf" || path.extension() == ".glb")
-            return LoadGLTF(filePath);
+            return LoadGLTF(filePath, mergeMeshes);
         else if (path.extension() == ".fbx")
-            return LoadFBX(filePath);
+            return LoadFBX(filePath, mergeMeshes);
         else if (path.extension() == ".obj")
-            return LoadOBJ(filePath);
+            return LoadOBJ(filePath, mergeMeshes);
 
         std::cout << "[ERROR] Failed to load model \"" << filePath << "\". The model format may not be supported." << std::endl;
 

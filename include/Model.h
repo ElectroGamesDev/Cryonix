@@ -30,6 +30,8 @@ namespace cl
         const std::vector<std::shared_ptr<Mesh>>& GetMeshes() const { return m_meshes; }
         size_t GetMeshCount() const { return m_meshes.size(); }
         bool HasMeshes() const { return !m_meshes.empty(); }
+        /// Merges compatible meshes to reduce draw calls. By default, this is automatically done when loading models, but will need to be manually called if new meshes are added to this model.
+        bool MergeMeshes();
 
         void SetMaterial(Material* material);
 
@@ -88,7 +90,7 @@ namespace cl
 
         // Node management for animations
         void SetNodeCount(int count) { m_nodeCount = count; }
-        int GetNodeCount() const { return m_nodeCount; }
+        //int GetNodeCount() const { return m_nodeCount; }
 
     private:
         Material* material;

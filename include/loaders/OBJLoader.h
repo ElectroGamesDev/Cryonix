@@ -4,5 +4,5 @@
 
 namespace cl
 {
-    Model* LoadOBJ(std::string_view filePath);
+    Model* LoadOBJ(std::string_view filePath, bool mergeMeshes = true);
 }

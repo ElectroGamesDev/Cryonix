@@ -7,7 +7,7 @@
 
 namespace cl
 {
-    Model* LoadFBX(std::string_view filePath);
+    Model* LoadFBX(std::string_view filePath, bool mergeMeshes = true);
 
     /// Load animation by index
     AnimationClip* LoadAnimationFromFBX(std::string_view filePath, size_t animationIndex = 0);

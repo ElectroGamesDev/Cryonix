@@ -7,7 +7,7 @@
 
 namespace cl
 {
-    Model* LoadModel(std::string_view filePath);
+    Model* LoadModel(std::string_view filePath, bool mergeMeshes = true);
     Model* LoadInstance(const Model* model);
 
     AnimationClip* LoadAnimation(std::string_view filePath, size_t animationIndex = 0);
