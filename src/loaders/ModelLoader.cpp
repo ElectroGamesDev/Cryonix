@@ -29,22 +29,25 @@ namespace cl
         return nullptr;
     }
 
-    Model* LoadInstance(const Model* model)
+    Model* CloneModel(const Model* model)
     {
         if (!model)
             return nullptr;
 
         Model* instance = new Model();
-        instance->m_meshes = model->GetMeshes();
-        instance->m_skeleton = model->GetSkeleton();
-        instance->m_animations = model->m_animations;
-        instance->Reset();
 
-        if (instance->m_skeleton)
-            instance->m_animator.SetSkeleton(instance->m_skeleton);
+        instance->m_meshes = model->GetMeshes();
+        instance->m_animations = model->m_animations;
+
+        if (model->GetSkeleton())
+            instance->SetSkeleton(new Skeleton(*model->GetSkeleton()));
+
+        instance->Reset();
 
         return instance;
     }
+
+
     AnimationClip* LoadAnimation(std::string_view filePath, size_t animationIndex)
     {
         std::filesystem::path path = filePath;

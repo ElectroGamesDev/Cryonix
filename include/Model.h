@@ -11,7 +11,7 @@ namespace cl
 {
     class Model
     {
-        friend Model* LoadInstance(const Model* model);
+        friend Model* CloneModel(const Model* model);
     public:
         static std::vector<Model*> s_models;
 
