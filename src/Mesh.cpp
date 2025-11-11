@@ -64,10 +64,7 @@ namespace cl
 
     void Mesh::Upload()
     {
-        if (m_uploaded)
-            return;
-
-        if (m_vertices.empty() || m_indices.empty())
+        if (m_uploaded || m_vertices.empty() || m_indices.empty())
             return;
 
         bgfx::VertexLayout layout;
@@ -77,7 +74,6 @@ namespace cl
             .add(bgfx::Attrib::Tangent, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Bitangent, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
-            .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
             .add(bgfx::Attrib::Indices, 4, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Weight, 4, bgfx::AttribType::Float)
             .end();

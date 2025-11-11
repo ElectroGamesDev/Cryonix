@@ -470,19 +470,19 @@ namespace cl
                                         vert.normal = { 0.0f, 1.0f, 0.0f };
 
                                     // color
-                                    if (!colors.empty())
-                                    {
-                                        size_t cBase = static_cast<size_t>(idx.position_index) * 3;
-                                        if (cBase + 2 < colors.size())
-                                        {
-                                            vert.color = Color(
-                                                static_cast<unsigned char>(std::clamp(colors[cBase + 0] * 255.0f, 0.0f, 255.0f)),
-                                                static_cast<unsigned char>(std::clamp(colors[cBase + 1] * 255.0f, 0.0f, 255.0f)),
-                                                static_cast<unsigned char>(std::clamp(colors[cBase + 2] * 255.0f, 0.0f, 255.0f)),
-                                                255
-                                            );
-                                        }
-                                    }
+                                    //if (!colors.empty())
+                                    //{
+                                    //    size_t cBase = static_cast<size_t>(idx.position_index) * 3;
+                                    //    if (cBase + 2 < colors.size())
+                                    //    {
+                                    //        vert.color = Color(
+                                    //            static_cast<unsigned char>(std::clamp(colors[cBase + 0] * 255.0f, 0.0f, 255.0f)),
+                                    //            static_cast<unsigned char>(std::clamp(colors[cBase + 1] * 255.0f, 0.0f, 255.0f)),
+                                    //            static_cast<unsigned char>(std::clamp(colors[cBase + 2] * 255.0f, 0.0f, 255.0f)),
+                                    //            255
+                                    //        );
+                                    //    }
+                                    //}
 
                                     // default tangent/bitangent
                                     vert.tangent = { 0, 0, 0 };

@@ -13,12 +13,13 @@ namespace cl
         Vector3 tangent;
         Vector3 bitangent;
         Vector2 texCoord;
-        Color color;
+
         float boneIndices[4];
         float boneWeights[4];
 
         Vertex()
-            : color(Color::White())
+            : tangent(0.0f, 0.0f, 0.0f)
+            , bitangent(0.0f, 0.0f, 0.0f)
             , boneIndices{ 0.0f, 0.0f, 0.0f, 0.0f }
             , boneWeights{ 0.0f, 0.0f, 0.0f, 0.0f }
         {

@@ -1,16 +1,19 @@
 #include "Renderer.h"
 #include <bgfx.h>
 #include <platform.h>
+#include <algorithm>
 
 #ifdef PLATFORM_WINDOWS
+#define NOMINMAX
 #include <windows.h>
 #endif
 #include <iostream>
 
 namespace cl
 {
-    static bgfx::UniformHandle u_boneMatrices = BGFX_INVALID_HANDLE;
-    static bgfx::UniformHandle u_skinningControl = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_BoneMatrices = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_IsSkinned = BGFX_INVALID_HANDLE;
+    static std::unordered_map<InstanceBatchKey, InstanceBatch, InstanceBatchKeyHasher> s_instanceBatches;
 
     RendererState* s_renderer = nullptr;
 
@@ -77,8 +80,8 @@ namespace cl
         // Create default shader
         //s_renderer->defaultProgram = CreateDefaultShader();
 
-        u_boneMatrices = bgfx::createUniform("u_boneMatrices", bgfx::UniformType::Mat4, 128); // Todo: Make this configurable
-        u_skinningControl = bgfx::createUniform("u_skinningControl", bgfx::UniformType::Vec4);
+        u_BoneMatrices = bgfx::createUniform("u_BoneMatrices", bgfx::UniformType::Vec4, 128); // This is enough for most models, but to configure it, it would also need to be set in the shader. Also, should we instead be using mat4?
+        u_IsSkinned = bgfx::createUniform("u_IsSkinned", bgfx::UniformType::Vec4);
 
         return true;
     }
@@ -91,11 +94,11 @@ namespace cl
             //if (bgfx::isValid(s_renderer->defaultProgram))
             //    bgfx::destroy(s_renderer->defaultProgram);
 
-            if (bgfx::isValid(u_boneMatrices))
-                bgfx::destroy(u_boneMatrices);
+            if (bgfx::isValid(u_BoneMatrices))
+                bgfx::destroy(u_BoneMatrices);
 
-            if (bgfx::isValid(u_skinningControl))
-                bgfx::destroy(u_skinningControl);
+            if (bgfx::isValid(u_IsSkinned))
+                bgfx::destroy(u_IsSkinned);
 
             bgfx::shutdown();
             delete s_renderer;
@@ -234,11 +237,9 @@ namespace cl
     {
         if (s_renderer->currentViewId == 0 || !mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
             return;
-
         bgfx::setTransform(transform.m);
         bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
         bgfx::setIndexBuffer(mesh->GetIndexBuffer());
-
         uint64_t state = 0
             | BGFX_STATE_WRITE_RGB
             | BGFX_STATE_WRITE_A
@@ -252,7 +253,7 @@ namespace cl
         Shader* shader = material->GetShader();
 
         // Uniforms must be set each frame
-
+        
         // Apply global uniforms
         shader->ApplyUniforms();
 
@@ -266,7 +267,7 @@ namespace cl
         if (mesh->IsSkinned())
         {
             const float enabled[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            bgfx::setUniform(u_skinningControl, enabled);
+            bgfx::setUniform(u_IsSkinned, enabled);
         }
 
         bgfx::setState(state);
@@ -285,7 +286,6 @@ namespace cl
             return;
 
         Matrix4 transform = Matrix4::Translate(position) * rotation.ToMatrix() * Matrix4::Scale(scale);
-
         DrawMesh(mesh, transform);
     }
 
@@ -295,7 +295,6 @@ namespace cl
             return;
 
         Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
-
         DrawMesh(mesh, position, rotQuat, scale);
     }
 
@@ -313,8 +312,7 @@ namespace cl
         if (!model || !model->HasMeshes())
             return;
 
-        Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
-        Matrix4 baseTransform = Matrix4::Translate(position) * rotQuat.ToMatrix() * Matrix4::Scale(scale);
+        Matrix4 baseTransform = Matrix4::Translate(position) * rotation.ToMatrix() * Matrix4::Scale(scale);
 
         // Determine what animation data to use
         const Animator* animator = model->GetAnimator();
@@ -339,7 +337,6 @@ namespace cl
         if (useNodeAnimation)
         {
             const auto& nodeTransforms = animator->GetNodeTransforms();
-
             for (size_t i = 0; i < model->GetMeshes().size(); ++i)
             {
                 const auto& mesh = model->GetMeshes()[i];
@@ -366,8 +363,7 @@ namespace cl
         else
         {
             if (bones)
-                bgfx::setUniform(u_boneMatrices, bones->data(), (uint16_t)bones->size()); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices uniform
-
+                bgfx::setUniform(u_BoneMatrices, bones->data(), (uint16_t)bones->size()); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices uniform
             for (const auto& mesh : model->GetMeshes())
                 DrawMesh(mesh.get(), baseTransform);
         }
@@ -379,7 +375,6 @@ namespace cl
             return;
 
         Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
-
         DrawModel(model, position, rotQuat, scale);
     }
 
@@ -389,9 +384,168 @@ namespace cl
             return;
 
         //model->UpdateTransformMatrix();
-
         for (const auto& mesh : model->GetMeshes())
-            DrawModel(model, model->GetPosition(), model->GetRotation(), model->GetScale()); // Todo: Rotation quaternion is already calcuated, so calculating it again the other DrawModel() is unnecessary
+            DrawModel(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
+    }
+
+    void BeginInstancing()
+    {
+        for (auto& pair : s_instanceBatches)
+            pair.second.Clear();
+    }
+
+    void DrawMeshInstanced(Mesh* mesh, const std::vector<Matrix4>& transforms, const std::vector<Matrix4>* boneMatrices)
+    {
+        if (!mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader() || transforms.empty())
+            return;
+
+        Material* material = mesh->GetMaterial();
+        Shader* shader = material->GetShader();
+
+        uint64_t state = BGFX_STATE_WRITE_RGB
+            | BGFX_STATE_WRITE_A
+            | BGFX_STATE_WRITE_Z
+            | BGFX_STATE_DEPTH_TEST_LESS
+            | BGFX_STATE_CULL_CW
+            | BGFX_STATE_MSAA
+            | GetBlendState(s_renderer->currentBlendMode);
+
+        constexpr uint32_t maxInstancesPerBatch = 512; // Todo: Should this be higher?
+        uint32_t numInstances = static_cast<uint32_t>(transforms.size());
+        uint32_t instanceOffset = 0;
+        while (instanceOffset < numInstances)
+        {
+            uint32_t batchSize = std::min(maxInstancesPerBatch, numInstances - instanceOffset);
+            bgfx::InstanceDataBuffer idb;
+            bgfx::allocInstanceDataBuffer(&idb, batchSize, sizeof(Matrix4));
+
+            // Check validity
+            if (!bgfx::isValid(idb.handle))
+            {
+                std::cerr << "[ERROR] Failed to allocate instance data buffer for batch of " << batchSize << " instances.\n";
+                instanceOffset += batchSize;
+                continue;
+            }
+
+            // Copy transform data
+            std::memcpy(idb.data, &transforms[instanceOffset], batchSize * sizeof(Matrix4));
+
+            // Bind buffers
+            bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
+            bgfx::setIndexBuffer(mesh->GetIndexBuffer());
+            bgfx::setInstanceDataBuffer(&idb);
+
+            // Uniforms must be set each frame
+
+            // Apply global uniforms
+            shader->ApplyUniforms();
+            // Apply material specific uniforms
+
+            material->ApplyShaderUniforms();
+
+            // Apply PBR material map uniforms
+            material->ApplyPBRUniforms();
+
+            // Bone matrices
+            if (mesh->IsSkinned())
+            {
+                float enabled[4] = { boneMatrices ? 1.0f : 0.0f, 0, 0, 0 };
+                bgfx::setUniform(u_IsSkinned, enabled);
+
+                if (boneMatrices)
+                    bgfx::setUniform(u_BoneMatrices, boneMatrices->data(), (uint16_t)boneMatrices->size());
+            }
+
+            bgfx::setState(state);
+            bgfx::submit(s_renderer->currentViewId, shader->GetHandle());
+
+            // Update stats
+            s_renderer->drawStats.drawCalls++;
+            s_renderer->drawStats.triangles += mesh->GetTriangleCount() * batchSize;
+            s_renderer->drawStats.vertices += static_cast<uint32_t>(mesh->GetVertices().size()) * batchSize;
+            s_renderer->drawStats.indicies += static_cast<uint32_t>(mesh->GetIndices().size()) * batchSize;
+            instanceOffset += batchSize;
+        }
+    }
+
+    void DrawModelInstanced(Model* model, const Vector3& position, const Quaternion& rotation, const Vector3& scale)
+    {
+        if (!model || !model->HasMeshes())
+            return;
+
+        Matrix4 baseTransform = Matrix4::Translate(position) * rotation.ToMatrix() * Matrix4::Scale(scale);
+        const Animator* animator = model->GetAnimator();
+        const std::vector<Matrix4>* bones = nullptr;
+        bool skipInstancing = false;
+
+        if (animator && animator->IsPlaying())
+        {
+            AnimationClip* clip = animator->GetCurrentClip();
+            if (clip)
+            {
+                if (clip->GetAnimationType() == AnimationType::Skeletal && model->HasSkeleton())
+                    bones = &animator->GetBoneMatrices();
+                else if (clip->GetAnimationType() == AnimationType::NodeBased)
+                    skipInstancing = true;
+            }
+        }
+        else if (animator && model->HasSkeleton())
+            bones = &animator->GetBoneMatrices();
+        if (skipInstancing)
+        {
+            DrawModel(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
+            return;
+        }
+        for (const auto& mesh : model->GetMeshes())
+        {
+            if (!mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
+                continue;
+
+            InstanceBatchKey key{ mesh.get(), mesh->GetMaterial(), mesh->GetMaterial()->GetShader(), bones };
+            auto it = s_instanceBatches.find(key);
+            if (it == s_instanceBatches.end())
+            {
+                InstanceBatch batch;
+                batch.mesh = mesh.get();
+                batch.material = mesh->GetMaterial();
+                batch.shader = mesh->GetMaterial()->GetShader();
+                batch.boneMatrices = bones;
+                batch.isSkinned = mesh->IsSkinned();
+                batch.transforms.push_back(baseTransform);
+                s_instanceBatches.emplace(key, std::move(batch));
+            }
+            else
+                it->second.transforms.push_back(baseTransform);
+        }
+    }
+
+    void DrawModelInstanced(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale)
+    {
+        if (!model || !model->HasMeshes())
+            return;
+
+        Quaternion rotQuat = Quaternion::FromEuler(rotation.y, rotation.x, rotation.z);
+        DrawModelInstanced(model, position, rotQuat, scale);
+    }
+
+    void DrawModelInstanced(Model* model)
+    {
+        if (!model || !model->HasMeshes())
+            return;
+
+        DrawModelInstanced(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
+    }
+
+    void EndInstancing()
+    {
+        for (auto& pair : s_instanceBatches)
+        {
+            InstanceBatch& batch = pair.second;
+            if (batch.transforms.empty())
+                continue;
+
+            DrawMeshInstanced(batch.mesh, batch.transforms, batch.boneMatrices);
+        }
     }
 
     void SetCullMode(bool enabled, bool clockwise)

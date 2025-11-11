@@ -73,6 +73,56 @@ namespace cl
     };
     extern RendererState* s_renderer;
 
+    struct InstanceBatch
+    {
+        Mesh* mesh;
+        Material* material;
+        Shader* shader;
+        std::vector<Matrix4> transforms;
+        const std::vector<Matrix4>* boneMatrices;
+        bool isSkinned;
+
+        InstanceBatch()
+            : mesh(nullptr)
+            , material(nullptr)
+            , shader(nullptr)
+            , boneMatrices(nullptr)
+            , isSkinned(false)
+        {
+            transforms.reserve(64);
+        }
+
+        void Clear()
+        {
+            transforms.clear();
+        }
+    };
+
+    struct InstanceBatchKey
+    {
+        Mesh* mesh;
+        Material* material;
+        Shader* shader;
+        const std::vector<Matrix4>* boneMatrices;
+
+        bool operator==(const InstanceBatchKey& other) const
+        {
+            return mesh == other.mesh && material == other.material && shader == other.shader && boneMatrices == other.boneMatrices;
+        }
+    };
+
+    struct InstanceBatchKeyHasher
+    {
+        std::size_t operator()(const InstanceBatchKey& key) const
+        {
+            std::size_t h1 = std::hash<void*>{}(key.mesh);
+            std::size_t h2 = std::hash<void*>{}(key.material);
+            std::size_t h3 = std::hash<void*>{}(key.shader);
+            std::size_t h4 = std::hash<const void*>{}(key.boneMatrices);
+            return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
+        }
+    };
+
     bool InitRenderer(Window* window, const Config& config);
     void ShutdownRenderer();
 
@@ -90,6 +140,24 @@ namespace cl
     void DrawModel(Model* model, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
     void DrawModel(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale);
     void DrawModel(Model* model);
+
+    /// Begin accumulating instances for the current frame
+    void BeginInstancing();
+
+    /// Draws instanced meshes. This is automatically called from EndInstancing();
+    void DrawMeshInstanced(Mesh* mesh, const std::vector<Matrix4>& transforms, const std::vector<Matrix4>* boneMatrices = nullptr);
+
+    /// Add a model to the instance batch with specified a transform
+    void DrawModelInstanced(Model* model, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
+
+    /// Add a model to the instance batch with specified a transform
+    void DrawModelInstanced(Model* model, const Vector3& position, const Vector3& rotation, const Vector3& scale);
+
+    /// Add a model to the instance batch
+    void DrawModelInstanced(Model* model);
+
+    /// Flush all accumulated instances to the GPU
+    void EndInstancing();
 
     void SetCullMode(bool enabled, bool clockwise = true);
     void SetDepthTest(bool enabled);
