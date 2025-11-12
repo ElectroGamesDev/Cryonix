@@ -55,6 +55,7 @@ namespace cl
         uint16_t currentViewId = 0;
         uint32_t clearColor = 0x000000ff;
         float clearDepth = 1.0f;
+        uint32_t currentFrame = 0;
 
         // Blend mode
         BlendMode currentBlendMode = BlendMode::None;

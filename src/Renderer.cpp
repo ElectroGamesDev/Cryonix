@@ -111,6 +111,8 @@ namespace cl
         if (!s_renderer)
             return;
 
+        Texture::ProcessPendingReadbacks(s_renderer->currentFrame);
+
         s_renderer->frameStartTime = std::chrono::steady_clock::now();
         s_renderer->drawStats = DrawStats();
 
@@ -126,7 +128,7 @@ namespace cl
         if (!s_renderer)
             return;
 
-        bgfx::frame();
+        s_renderer->currentFrame = bgfx::frame();
 
         // CPU time
         s_renderer->frameEndTime = std::chrono::steady_clock::now();
