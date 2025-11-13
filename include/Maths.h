@@ -88,8 +88,18 @@ namespace cl
         static Quaternion FromAxisAngle(const Vector3& axis, float degrees);
         static Quaternion FromEuler(float yaw, float pitch, float roll);
         static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
+        static Quaternion FromMatrix(const Matrix4& m);
         Vector3 ToEuler() const;
         Matrix4 ToMatrix() const;
+
+        Quaternion operator+(const Quaternion& other) const { return { x + other.x, y + other.y, z + other.z, w + other.w }; }
+        Quaternion& operator+=(const Quaternion& other) {
+            x += other.x;
+            y += other.y;
+            z += other.z;
+            w += other.w;
+            return *this;
+        }
 
         Quaternion operator*(const Quaternion& other) const;
         Quaternion& operator*=(const Quaternion& q) {
@@ -151,7 +161,6 @@ namespace cl
         }
 
         bool operator!=(const Matrix4& other) const { return !(*this == other); }
-
     };
 
     struct Color
