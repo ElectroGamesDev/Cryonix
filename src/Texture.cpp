@@ -36,11 +36,15 @@ namespace cl
     {
         Destroy();
 
-        // Remove from pending readbacks
+        // Remove from pending readbacks and cleanup staging textures
         for (auto it = s_pendingReadbacks.begin(); it != s_pendingReadbacks.end();)
         {
             if (it->texture == this)
+            {
+                if (bgfx::isValid(it->stagingTexture))
+                    bgfx::destroy(it->stagingTexture);
                 it = s_pendingReadbacks.erase(it);
+            }
             else
                 ++it;
         }
@@ -80,7 +84,7 @@ namespace cl
             return false;
         }
 
-        uint64_t flags = BGFX_TEXTURE_READ_BACK;
+        uint64_t flags = BGFX_TEXTURE_NONE;
         if (isColorTexture)
             flags |= BGFX_TEXTURE_SRGB;
 
@@ -118,7 +122,7 @@ namespace cl
         }
 
         bgfx::TextureFormat::Enum format = ChannelsToFormat(channels);
-        uint64_t flags = BGFX_TEXTURE_READ_BACK;
+        uint64_t flags = BGFX_TEXTURE_NONE;
         if (isColorTexture)
             flags |= BGFX_TEXTURE_SRGB;
 
@@ -374,7 +378,7 @@ namespace cl
 
         Destroy();
 
-        uint64_t flags = BGFX_TEXTURE_NONE | BGFX_TEXTURE_READ_BACK;
+        uint64_t flags = BGFX_TEXTURE_NONE;
         if (m_isColorTexture)
             flags |= BGFX_TEXTURE_SRGB;
 
@@ -606,31 +610,31 @@ namespace cl
     {
         switch (format)
         {
-            case bgfx::TextureFormat::R8:
-            case bgfx::TextureFormat::R16:
-            case bgfx::TextureFormat::R16F:
-            case bgfx::TextureFormat::R32F:
-                return 1;
+        case bgfx::TextureFormat::R8:
+        case bgfx::TextureFormat::R16:
+        case bgfx::TextureFormat::R16F:
+        case bgfx::TextureFormat::R32F:
+            return 1;
 
-            case bgfx::TextureFormat::RG8:
-            case bgfx::TextureFormat::RG16:
-            case bgfx::TextureFormat::RG16F:
-            case bgfx::TextureFormat::RG32F:
-                return 2;
+        case bgfx::TextureFormat::RG8:
+        case bgfx::TextureFormat::RG16:
+        case bgfx::TextureFormat::RG16F:
+        case bgfx::TextureFormat::RG32F:
+            return 2;
 
-            case bgfx::TextureFormat::RGB8:
-            case bgfx::TextureFormat::RGB9E5F:
-                return 3;
+        case bgfx::TextureFormat::RGB8:
+        case bgfx::TextureFormat::RGB9E5F:
+            return 3;
 
-            case bgfx::TextureFormat::RGBA8:
-            case bgfx::TextureFormat::RGBA16:
-            case bgfx::TextureFormat::RGBA16F:
-            case bgfx::TextureFormat::RGBA32F:
-            case bgfx::TextureFormat::BGRA8:
-                return 4;
+        case bgfx::TextureFormat::RGBA8:
+        case bgfx::TextureFormat::RGBA16:
+        case bgfx::TextureFormat::RGBA16F:
+        case bgfx::TextureFormat::RGBA32F:
+        case bgfx::TextureFormat::BGRA8:
+            return 4;
 
-            default:
-                return 4;
+        default:
+            return 4;
         }
     }
 
@@ -639,12 +643,24 @@ namespace cl
         if (!IsValid() || m_readbackPending || !m_cachedPixelData.empty())
             return false;
 
+        // Create staging texture
+        bgfx::TextureHandle stagingTexture = CreateStagingTexture();
+        if (!bgfx::isValid(stagingTexture))
+        {
+            std::cerr << "[ERROR] Failed to create staging texture for readback" << std::endl;
+            return false;
+        }
+
+        // Blit from main texture to staging texture
+        bgfx::blit(bgfx::ViewId(255), stagingTexture, 0, 0, m_handle, 0, 0, m_width, m_height);
+
         int dataSize = m_width * m_height * m_channels;
         m_cachedPixelData.resize(dataSize);
 
         ReadbackRequest request;
         request.texture = this;
-        request.finishedFrame = bgfx::readTexture(m_handle, m_cachedPixelData.data());
+        request.stagingTexture = stagingTexture;
+        request.finishedFrame = bgfx::readTexture(stagingTexture, m_cachedPixelData.data());
         s_pendingReadbacks.push_back(request);
 
         m_readbackPending = true;
@@ -665,16 +681,16 @@ namespace cl
     {
         switch (channels)
         {
-            case 1:
-                return bgfx::TextureFormat::R8;
-            case 2:
-                return bgfx::TextureFormat::RG8;
-            case 3:
-                return bgfx::TextureFormat::RGB8;
-            case 4:
-                return bgfx::TextureFormat::RGBA8;
-            default:
-                return bgfx::TextureFormat::RGBA8;
+        case 1:
+            return bgfx::TextureFormat::R8;
+        case 2:
+            return bgfx::TextureFormat::RG8;
+        case 3:
+            return bgfx::TextureFormat::RGB8;
+        case 4:
+            return bgfx::TextureFormat::RGBA8;
+        default:
+            return bgfx::TextureFormat::RGBA8;
         }
     }
 
@@ -712,57 +728,36 @@ namespace cl
     {
         switch (op.type)
         {
-            case PendingOpType::Resize:
-                return Resize(op.param1, op.param2);
-            case PendingOpType::FlipVertical:
-                return FlipVertical();
-            case PendingOpType::FlipHorizontal:
-                return FlipHorizontal();
-            case PendingOpType::Rotate90CW:
-                return Rotate90(true);
-            case PendingOpType::Rotate90CCW:
-                return Rotate90(false);
-            case PendingOpType::Grayscale:
-                return Grayscale();
-            case PendingOpType::Invert:
-                return Invert();
-            case PendingOpType::ApplyTint:
-                return ApplyTint(op.color);
-            case PendingOpType::SetPixel:
-                SetPixel(op.param1, op.param2, op.color);
-                return true;
+        case PendingOpType::Resize:
+            return Resize(op.param1, op.param2);
+        case PendingOpType::FlipVertical:
+            return FlipVertical();
+        case PendingOpType::FlipHorizontal:
+            return FlipHorizontal();
+        case PendingOpType::Rotate90CW:
+            return Rotate90(true);
+        case PendingOpType::Rotate90CCW:
+            return Rotate90(false);
+        case PendingOpType::Grayscale:
+            return Grayscale();
+        case PendingOpType::Invert:
+            return Invert();
+        case PendingOpType::ApplyTint:
+            return ApplyTint(op.color);
+        case PendingOpType::SetPixel:
+            SetPixel(op.param1, op.param2, op.color);
+            return true;
         }
         return false;
     }
 
-    void Texture::RecreateTextureWithReadback()
+    bgfx::TextureHandle Texture::CreateStagingTexture()
     {
-        if (!IsValid())
-            return;
-
-        // Store current state
-        int oldWidth = m_width;
-        int oldHeight = m_height;
-        int oldChannels = m_channels;
-        bool oldIsColor = m_isColorTexture;
-        auto oldFormat = m_format;
-        bool oldMips = m_hasMipmaps;
-
-        if (bgfx::isValid(m_handle))
-        {
-            bgfx::destroy(m_handle);
-            m_handle = BGFX_INVALID_HANDLE;
-        }
-
-        uint64_t flags = BGFX_TEXTURE_READ_BACK;
-        if (oldIsColor)
+        uint64_t flags = BGFX_TEXTURE_READ_BACK | BGFX_TEXTURE_BLIT_DST;
+        if (m_isColorTexture)
             flags |= BGFX_TEXTURE_SRGB;
 
-        if (!m_cachedPixelData.empty())
-        {
-            const bgfx::Memory* mem = bgfx::copy(m_cachedPixelData.data(), oldWidth * oldHeight * oldChannels);
-            m_handle = bgfx::createTexture2D(oldWidth, oldHeight, oldMips, 1, oldFormat, flags, mem);
-        }
+        return bgfx::createTexture2D(m_width, m_height, m_hasMipmaps, 1, m_format, flags);
     }
 
     void Texture::ProcessPendingReadbacks(uint32_t currentFrame)
@@ -786,6 +781,8 @@ namespace cl
 
                 if (!textureValid)
                 {
+                    if (bgfx::isValid(it->stagingTexture))
+                        bgfx::destroy(it->stagingTexture);
                     it = s_pendingReadbacks.erase(it);
                     continue;
                 }
@@ -793,6 +790,10 @@ namespace cl
                 // Mark cache as ready
                 tex->m_readbackPending = false;
                 tex->m_cachePixelData = true;
+
+                // Cleanup staging texture
+                if (bgfx::isValid(it->stagingTexture))
+                    bgfx::destroy(it->stagingTexture);
 
                 // Execute all pending operations
                 for (const auto& op : it->pendingOps)

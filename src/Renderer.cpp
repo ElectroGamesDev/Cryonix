@@ -111,7 +111,7 @@ namespace cl
         if (!s_renderer)
             return;
 
-        //Texture::ProcessPendingReadbacks(s_renderer->currentFrame);
+        Texture::ProcessPendingReadbacks(s_renderer->currentFrame);
 
         s_renderer->frameStartTime = std::chrono::steady_clock::now();
         s_renderer->drawStats = DrawStats();

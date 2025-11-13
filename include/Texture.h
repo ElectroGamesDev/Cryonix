@@ -96,6 +96,7 @@ namespace cl
         {
             Texture* texture;
             uint32_t finishedFrame;
+            bgfx::TextureHandle stagingTexture;
             std::vector<PendingOperation> pendingOps;
         };
 
@@ -118,7 +119,7 @@ namespace cl
         bool EnsureCacheLoaded();
         void QueueOperation(PendingOpType type, int param1 = 0, int param2 = 0, const Color& color = Color());
         bool ExecuteOperation(const PendingOperation& op);
-        void RecreateTextureWithReadback();
+        bgfx::TextureHandle CreateStagingTexture();
         static int GetFormatChannels(bgfx::TextureFormat::Enum format);
     };
 }
