@@ -82,16 +82,28 @@ namespace cl
     void Animator::SetSkeleton(Skeleton* skeleton)
     {
         m_skeleton = skeleton;
-        if (m_skeleton)
+
+        if (!m_skeleton)
+            return;
+
+        m_localTransforms.resize(m_skeleton->bones.size());
+        m_boneMatrices.resize(m_skeleton->bones.size());
+
+        for (auto& bone : m_skeleton->bones)
+            bone.children.clear();
+
+        for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
         {
-            m_localTransforms.resize(m_skeleton->bones.size());
-            m_boneMatrices.resize(m_skeleton->bones.size());
+            m_localTransforms[i] = m_skeleton->bones[i].localTransform;
 
-            for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
-                m_localTransforms[i] = m_skeleton->bones[i].localTransform;
-
-            CalculateBoneTransforms();
+            int parent = m_skeleton->bones[i].parentIndex;
+            if (parent >= 0)
+                m_skeleton->bones[parent].children.push_back((int)i);
         }
+
+        CalculateBoneTransforms();
+
+        m_skeleton->finalMatrices = m_boneMatrices;
     }
 
     void Animator::PlayAnimation(AnimationClip* clip, bool loop)
@@ -121,8 +133,9 @@ namespace cl
                 m_localTransforms[i] = m_skeleton->bones[i].localTransform;
 
             SampleAnimation(m_currentTime);
-
             CalculateBoneTransforms();
+
+            m_skeleton->finalMatrices = m_boneMatrices;
         }
         else
         {
@@ -188,7 +201,6 @@ namespace cl
             {
                 SampleAnimation(m_currentTime);
                 CalculateBoneTransforms();
-                m_boneMatrices = m_skeleton->finalMatrices;
             }
         }
         else
@@ -208,43 +220,65 @@ namespace cl
         {
             SampleAnimation(m_currentTime);
             CalculateBoneTransforms();
-            m_boneMatrices = m_skeleton->finalMatrices;
+
+            m_skeleton->finalMatrices = m_boneMatrices;
         }
     }
-
 
     void Animator::SampleAnimation(float time)
     {
         if (!m_currentClip || !m_skeleton)
             return;
 
-        // Reset to bind pose each sample to avoid accumulation errors
         for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
             m_localTransforms[i] = m_skeleton->bones[i].localTransform;
 
-        for (const auto& channel : m_currentClip->GetChannels())
+        struct AnimData
+        {
+            bool hasT = false, hasR = false, hasS = false;
+            Vector3 t;
+            Quaternion r;
+            Vector3 s;
+        };
+        std::vector<AnimData> animData(m_skeleton->bones.size());
+
+        // Get the animated components
+        for (const AnimationChannel& channel : m_currentClip->GetChannels())
         {
             int boneIndex = channel.targetBoneIndex;
             if (boneIndex < 0 || boneIndex >= static_cast<int>(m_skeleton->bones.size()))
                 continue;
 
-            Vector3 translation = m_localTransforms[boneIndex].GetTranslation();
-            Quaternion rotation = m_localTransforms[boneIndex].GetRotation();
-            Vector3 scale = m_localTransforms[boneIndex].GetScale();
-
             if (!channel.translations.empty())
-                translation = InterpolateTranslation(channel, time);
+            {
+                animData[boneIndex].t = InterpolateTranslation(channel, time);
+                animData[boneIndex].hasT = true;
+            }
 
             if (!channel.rotations.empty())
-                rotation = InterpolateRotation(channel, time);
+            {
+                animData[boneIndex].r = InterpolateRotation(channel, time);
+                animData[boneIndex].hasR = true;
+            }
 
             if (!channel.scales.empty())
-                scale = InterpolateScale(channel, time);
+            {
+                animData[boneIndex].s = InterpolateScale(channel, time);
+                animData[boneIndex].hasS = true;
+            }
+        }
 
-            Matrix4 t = Matrix4::Translate(translation);
-            Matrix4 r = Matrix4::FromQuaternion(rotation);
-            Matrix4 s = Matrix4::Scale(scale);
-            m_localTransforms[boneIndex] = t * r * s;
+        // Reconstruct only bones that have animation
+        for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
+        {
+            if (animData[i].hasT || animData[i].hasR || animData[i].hasS)
+            {
+                Vector3 t = animData[i].hasT ? animData[i].t : m_skeleton->bones[i].localTransform.GetTranslation();
+                Quaternion r = animData[i].hasR ? animData[i].r : m_skeleton->bones[i].localTransform.GetRotation();
+                Vector3 s = animData[i].hasS ? animData[i].s : m_skeleton->bones[i].localTransform.GetScale();
+
+                m_localTransforms[i] = Matrix4::Translate(t) * Matrix4::FromQuaternion(r) * Matrix4::Scale(s);
+            }
         }
     }
 
@@ -447,7 +481,6 @@ namespace cl
         );
     }
 
-
     void Animator::CalculateBoneTransforms()
     {
         if (!m_skeleton)
@@ -455,30 +488,24 @@ namespace cl
 
         m_boneMatrices.resize(m_skeleton->bones.size());
 
-        // Todo: This is slow
-        // Recursive computation to ensure topological order
-        std::function<void(int, const Matrix4&)> computeBoneMatrix = [&](int index, const Matrix4& parentTransform)
+        std::function<void(int, const Matrix4&)> compute = [&](int index, const Matrix4& parentGlobal)
         {
             const Bone& bone = m_skeleton->bones[index];
+            Matrix4 global = parentGlobal * m_localTransforms[index];
 
-            Matrix4 globalTransform = parentTransform * m_localTransforms[index];
-            m_boneMatrices[index] = globalTransform * bone.inverseBindMatrix;
+            m_boneMatrices[index] = global * bone.inverseBindMatrix;
 
-            for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
-            {
-                if (m_skeleton->bones[i].parentIndex == index)
-                    computeBoneMatrix(static_cast<int>(i), globalTransform);
-            }
+            for (int child : bone.children)
+                compute(child, global);
         };
 
         for (size_t i = 0; i < m_skeleton->bones.size(); ++i)
         {
             if (m_skeleton->bones[i].parentIndex == -1)
-                computeBoneMatrix(static_cast<int>(i), Matrix4::Identity());
+                compute((int)i, Matrix4::Identity());
         }
 
-        if (m_skeleton)
-            m_skeleton->finalMatrices = m_boneMatrices;
+        m_skeleton->finalMatrices = m_boneMatrices;
     }
 
     Vector3 Animator::InterpolateTranslation(const AnimationChannel& channel, float time) const

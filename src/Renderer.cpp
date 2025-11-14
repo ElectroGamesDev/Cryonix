@@ -281,16 +281,13 @@ namespace cl
         float skinned[4] = { mesh->IsSkinned() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
         bgfx::setUniform(u_IsSkinned, skinned);
 
-        //if (bones && mesh->IsSkinned())
-        //    bgfx::setUniform(u_BoneMatrices, bones->data(), static_cast<uint16_t>(bones->size())); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices uniform
-
         if (bones && mesh->IsSkinned())
         {
             size_t numBones = bones->size();
-            std::vector<Matrix4> transposedBones(numBones);
-            for (size_t i = 0; i < numBones; ++i)
-                transposedBones[i] = (*bones)[i].Transpose();
-            bgfx::setUniform(u_BoneMatrices, transposedBones.data(), static_cast<uint16_t>(numBones)); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices
+            //std::vector<Matrix4> transposedBones(numBones);
+            //for (size_t i = 0; i < numBones; ++i)
+            //    transposedBones[i] = (*bones)[i].Transpose();
+            bgfx::setUniform(u_BoneMatrices, bones->data(), static_cast<uint16_t>(numBones)); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices
         }
 
         bgfx::setState(state);
@@ -461,16 +458,13 @@ namespace cl
 
             if (mesh->IsSkinned() && boneMatrices)
             {
-                //if (bones && mesh->IsSkinned())
-                //    bgfx::setUniform(u_BoneMatrices, bones->data(), static_cast<uint16_t>(bones->size())); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices uniform
-
                 if (boneMatrices && mesh->IsSkinned())
                 {
                     size_t numBones = boneMatrices->size();
-                    std::vector<Matrix4> transposedBones(numBones);
-                    for (size_t i = 0; i < numBones; ++i)
-                        transposedBones[i] = (*boneMatrices)[i].Transpose();
-                    bgfx::setUniform(u_BoneMatrices, transposedBones.data(), static_cast<uint16_t>(numBones)); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices
+                    //std::vector<Matrix4> transposedBones(numBones);
+                    //for (size_t i = 0; i < numBones; ++i)
+                    //    transposedBones[i] = (*boneMatrices)[i].Transpose();
+                    bgfx::setUniform(u_BoneMatrices, boneMatrices->data(), static_cast<uint16_t>(numBones)); // Todo: There may be issues if the bones > max bones set when creating the u_boneMatrices
                 }
             }
 

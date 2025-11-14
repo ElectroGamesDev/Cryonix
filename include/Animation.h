@@ -11,6 +11,7 @@ namespace cl
     {
         std::string name;
         int parentIndex;
+        std::vector<int> children;
         Matrix4 inverseBindMatrix;
         Matrix4 localTransform;
 
@@ -40,12 +41,10 @@ namespace cl
 
             finalMatrices[index] = globalTransform * bone.inverseBindMatrix;
 
-            for (size_t i = 0; i < bones.size(); ++i)
-            {
-                if (bones[i].parentIndex == index)
-                    ComputeBoneMatrix((int)i, globalTransform);
-            }
+            for (int child : bone.children)
+                ComputeBoneMatrix(child, globalTransform);
         }
+
 
         void UpdateFinalMatrices()
         {
@@ -54,8 +53,6 @@ namespace cl
 
             finalMatrices.resize(bones.size());
 
-            //for (size_t i = 0; i < bones.size(); ++i)
-            //    ComputeBoneMatrix((int)i, Matrix4::Identity());
             for (size_t i = 0; i < bones.size(); ++i)
             {
                 if (bones[i].parentIndex == -1)

@@ -281,7 +281,7 @@ namespace cl
             size_t jointCount = skin->joints_count;
             skeleton->bones.resize(jointCount);
 
-            // Map nodes -> joint index and fill bone names
+            // Map nodes to joint index
             for (size_t i = 0; i < jointCount; ++i)
             {
                 cgltf_node* joint = skin->joints[i];
@@ -306,19 +306,17 @@ namespace cl
                         bone.parentIndex = it->second;
                 }
 
-                // Use cgltf helper to get local matrix (correct for glTF)
                 Matrix4 localMat;
                 cgltf_node_transform_local(joint, localMat.m);
                 bone.localTransform = localMat;
             }
 
-            // Read inverse bind matrices if provided
+            // Read inverse bind matrices
             cgltf_accessor* ibmAccessor = skin->inverse_bind_matrices;
             bool hasInverseBind = (ibmAccessor != nullptr);
 
             if (hasInverseBind)
             {
-                // read provided inverse bind matrices
                 for (size_t i = 0; i < jointCount; ++i)
                 {
                     float m[16];
@@ -328,8 +326,6 @@ namespace cl
             }
             else
             {
-                // Need to compute inverse bind matrices from bind pose
-                // Build adjacency list (children) to traverse hierarchy robustly
                 std::vector<std::vector<int>> children;
                 children.resize(jointCount);
                 for (size_t i = 0; i < jointCount; ++i)
@@ -339,23 +335,18 @@ namespace cl
                         children[p].push_back((int)i);
                 }
 
-                // compute global bind pose for each bone in proper order
                 std::vector<Matrix4> bindPoseGlobal(jointCount, Matrix4::Identity());
 
                 std::function<void(int, const Matrix4&)> computeBindPose = [&](int index, const Matrix4& parentTransform)
-                    {
-                        // local transform already stored in bone.localTransform (from cgltf_node_transform_local)
-                        const Matrix4& local = skeleton->bones[index].localTransform;
-                        Matrix4 global = parentTransform * local;
-                        bindPoseGlobal[index] = global;
+                {
+                    const Matrix4& local = skeleton->bones[index].localTransform;
+                    Matrix4 global = parentTransform * local;
+                    bindPoseGlobal[index] = global;
 
-                        for (int childIdx : children[index])
-                        {
-                            computeBindPose(childIdx, global);
-                        }
-                    };
+                    for (int childIdx : children[index])
+                        computeBindPose(childIdx, global);
+                };
 
-                // Start recursion at roots
                 for (size_t i = 0; i < jointCount; ++i)
                 {
                     if (skeleton->bones[i].parentIndex == -1)
@@ -364,14 +355,11 @@ namespace cl
 
                 // invert to get inverse bind matrices
                 for (size_t i = 0; i < jointCount; ++i)
-                {
                     skeleton->bones[i].inverseBindMatrix = bindPoseGlobal[i].Inverse();
-                }
             }
 
-            // Make sure finalMatrices vector exists and compute finalMatrices
             skeleton->finalMatrices.resize(jointCount);
-            skeleton->UpdateFinalMatrices();
+            //skeleton->UpdateFinalMatrices();
 
             model->SetSkeleton(skeleton);
             model->SetSkinned(true);
@@ -1156,13 +1144,6 @@ namespace cl
                         }
                     }
 
-                    if (animChannel.translations.empty())
-                        animChannel.translations.resize(keyCount, Vector3(0.0f, 0.0f, 0.0f));
-                    if (animChannel.rotations.empty())
-                        animChannel.rotations.resize(keyCount, Quaternion(0.0f, 0.0f, 0.0f, 1.0f));
-                    if (animChannel.scales.empty())
-                        animChannel.scales.resize(keyCount, Vector3(1.0f, 1.0f, 1.0f));
-
                     clip->AddChannel(animChannel);
                 }
                 // Handle node-based animation channels
@@ -1298,7 +1279,6 @@ namespace cl
 
         model->SetNodeCount(static_cast<int>(data->nodes_count));
 
-        // Merge meshes if requested
         if (mergeMeshes)
         {
             if (!model->MergeMeshes())
@@ -1431,19 +1411,19 @@ namespace cl
                     animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
                 }
 
-                if (animChannel.translations.empty())
-                {
-                    animChannel.translations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                }
+                //if (animChannel.translations.empty())
+                //{
+                //    animChannel.translations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                //}
 
-                if (animChannel.scales.empty())
-                {
-                    animChannel.scales.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                }
+                //if (animChannel.scales.empty())
+                //{
+                //    animChannel.scales.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
+                //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
+                //}
             }
             else if (channel->target_path == cgltf_animation_path_type_scale)
             {
@@ -1455,19 +1435,19 @@ namespace cl
                     animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
                 }
 
-                if (animChannel.translations.empty())
-                {
-                    animChannel.translations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                }
+                //if (animChannel.translations.empty())
+                //{
+                //    animChannel.translations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                //}
 
-                if (animChannel.rotations.empty())
-                {
-                    animChannel.rotations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                }
+                //if (animChannel.rotations.empty())
+                //{
+                //    animChannel.rotations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
+                //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+                //}
             }
             clip->AddChannel(animChannel);
         }
@@ -1600,19 +1580,19 @@ namespace cl
                     animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
                 }
 
-                if (animChannel.translations.empty())
-                {
-                    animChannel.translations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                }
+                //if (animChannel.translations.empty())
+                //{
+                //    animChannel.translations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                //}
 
-                if (animChannel.scales.empty())
-                {
-                    animChannel.scales.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                }
+                //if (animChannel.scales.empty())
+                //{
+                //    animChannel.scales.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
+                //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
+                //}
             }
             else if (channel->target_path == cgltf_animation_path_type_scale)
             {
@@ -1624,19 +1604,19 @@ namespace cl
                     animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
                 }
 
-                if (animChannel.translations.empty())
-                {
-                    animChannel.translations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                }
+                //if (animChannel.translations.empty())
+                //{
+                //    animChannel.translations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                //}
 
-                if (animChannel.rotations.empty())
-                {
-                    animChannel.rotations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                }
+                //if (animChannel.rotations.empty())
+                //{
+                //    animChannel.rotations.resize(animChannel.times.size());
+                //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
+                //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+                //}
             }
             clip->AddChannel(animChannel);
         }
@@ -1762,19 +1742,19 @@ namespace cl
                         animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
                     }
 
-                    if (animChannel.translations.empty())
-                    {
-                        animChannel.translations.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                            animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                    }
+                    //if (animChannel.translations.empty())
+                    //{
+                    //    animChannel.translations.resize(animChannel.times.size());
+                    //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                    //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                    //}
 
-                    if (animChannel.scales.empty())
-                    {
-                        animChannel.scales.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                            animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                    }
+                    //if (animChannel.scales.empty())
+                    //{
+                    //    animChannel.scales.resize(animChannel.times.size());
+                    //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
+                    //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
+                    //}
                 }
                 else if (channel->target_path == cgltf_animation_path_type_scale)
                 {
@@ -1786,19 +1766,19 @@ namespace cl
                         animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
                     }
 
-                    if (animChannel.translations.empty())
-                    {
-                        animChannel.translations.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                            animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                    }
+                    //if (animChannel.translations.empty())
+                    //{
+                    //    animChannel.translations.resize(animChannel.times.size());
+                    //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
+                    //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
+                    //}
 
-                    if (animChannel.rotations.empty())
-                    {
-                        animChannel.rotations.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                            animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                    }
+                    //if (animChannel.rotations.empty())
+                    //{
+                    //    animChannel.rotations.resize(animChannel.times.size());
+                    //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
+                    //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+                    //}
                 }
                 clip->AddChannel(animChannel);
             }
