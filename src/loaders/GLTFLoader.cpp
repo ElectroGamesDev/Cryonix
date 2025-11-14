@@ -222,6 +222,388 @@ namespace cl
         return true;
     }
 #endif
+    AnimationClip* LoadAnimation(cgltf_animation* anim, size_t index, const std::unordered_map<cgltf_node*, int>& nodeToJointMap, const std::unordered_map<cgltf_node*, int>& nodeToIndexMap)
+    {
+        AnimationClip* clip = new AnimationClip();
+
+        clip->SetName(anim->name ? anim->name : ("Animation_" + std::to_string(index)));
+        float maxTime = 0.0f;
+        bool hasSkeletalChannels = false;
+        bool hasNodeChannels = false;
+        bool hasWeightChannels = false;
+
+        // Determine animation type
+        for (size_t j = 0; j < anim->channels_count; ++j)
+        {
+            cgltf_animation_channel* channel = &anim->channels[j];
+            if (!channel->target_node)
+                continue;
+
+            if (channel->target_path == cgltf_animation_path_type_weights)
+                hasWeightChannels = true;
+            else if (nodeToJointMap.find(channel->target_node) != nodeToJointMap.end())
+                hasSkeletalChannels = true;
+            else
+                hasNodeChannels = true;
+        }
+        if (hasSkeletalChannels && !hasNodeChannels)
+            clip->SetAnimationType(AnimationType::Skeletal);
+        else if (!hasSkeletalChannels && hasNodeChannels)
+            clip->SetAnimationType(AnimationType::NodeBased);
+        else if (hasSkeletalChannels && hasNodeChannels)
+        {
+            clip->SetAnimationType(AnimationType::Skeletal);
+            std::cout << "[WARNING] Animation '" << clip->GetName() << "' has both skeletal and node channels. Using skeletal mode." << std::endl;
+        }
+        else
+            clip->SetAnimationType(AnimationType::NodeBased);
+
+        // Load animation channels
+        for (size_t j = 0; j < anim->channels_count; ++j)
+        {
+            cgltf_animation_channel* channel = &anim->channels[j];
+            cgltf_animation_sampler* sampler = channel->sampler;
+            if (!channel->target_node || !sampler)
+                continue;
+
+            AnimationInterpolation interpType = AnimationInterpolation::Linear;
+            switch (sampler->interpolation)
+            {
+                case cgltf_interpolation_type_linear:
+                    interpType = AnimationInterpolation::Linear;
+                    break;
+                case cgltf_interpolation_type_step:
+                    interpType = AnimationInterpolation::Step;
+                    break;
+                case cgltf_interpolation_type_cubic_spline:
+                    interpType = AnimationInterpolation::CubicSpline;
+                    break;
+                default:
+                    interpType = AnimationInterpolation::Linear;
+                    break;
+            }
+
+            cgltf_accessor* timeAccessor = sampler->input;
+            std::vector<float> times(timeAccessor->count);
+            for (size_t t = 0; t < timeAccessor->count; ++t)
+            {
+                cgltf_accessor_read_float(timeAccessor, t, &times[t], 1);
+                if (times[t] > maxTime)
+                    maxTime = times[t];
+            }
+
+            cgltf_accessor* dataAccessor = sampler->output;
+            auto jointIt = nodeToJointMap.find(channel->target_node);
+            bool isBoneChannel = (jointIt != nodeToJointMap.end());
+
+            // Handle morph target weight animation
+            if (channel->target_path == cgltf_animation_path_type_weights)
+            {
+                MorphWeightChannel weightChannel;
+                auto nodeIt = nodeToIndexMap.find(channel->target_node);
+                if (nodeIt != nodeToIndexMap.end())
+                    weightChannel.targetNodeIndex = nodeIt->second;
+                else
+                {
+                    std::cout << "[WARNING] Node not found for morph weight animation" << std::endl;
+                    continue;
+                }
+
+                weightChannel.interpolation = interpType;
+                weightChannel.times = times;
+
+                // Calculate number of morph targets from the node
+                size_t weightsPerFrame = 0;
+                if (channel->target_node->mesh && channel->target_node->mesh->primitives_count > 0)
+                    weightsPerFrame = channel->target_node->mesh->primitives[0].targets_count;
+                if (weightsPerFrame == 0)
+                {
+                    std::cout << "[WARNING] Morph weight animation found but no morph targets on node" << std::endl;
+                    continue;
+                }
+
+                size_t keyCount = times.size();
+                if (interpType == AnimationInterpolation::CubicSpline)
+                {
+                    if (dataAccessor->count != keyCount * 3 * weightsPerFrame)
+                    {
+                        std::cerr << "[ERROR] Cubic spline morph weight data count mismatch" << std::endl;
+                        continue;
+                    }
+                    weightChannel.weights.resize(keyCount);
+                    for (size_t k = 0; k < keyCount; ++k)
+                    {
+                        weightChannel.weights[k].resize(weightsPerFrame);
+
+                        size_t baseIdx = k * 3 * weightsPerFrame + weightsPerFrame;
+                        for (size_t w = 0; w < weightsPerFrame; ++w)
+                            cgltf_accessor_read_float(dataAccessor, baseIdx + w, &weightChannel.weights[k][w], 1);
+                    }
+                }
+                else
+                {
+                    // Linear or Step interpolation
+                    if (dataAccessor->count != keyCount * weightsPerFrame)
+                    {
+                        std::cerr << "[ERROR] Morph weight data count mismatch" << std::endl;
+                        continue;
+                    }
+
+                    weightChannel.weights.resize(keyCount);
+                    for (size_t k = 0; k < keyCount; ++k)
+                    {
+                        weightChannel.weights[k].resize(weightsPerFrame);
+                        for (size_t w = 0; w < weightsPerFrame; ++w)
+                        {
+                            cgltf_accessor_read_float(dataAccessor, k * weightsPerFrame + w,
+                                &weightChannel.weights[k][w], 1);
+                        }
+                    }
+                }
+                clip->AddMorphWeightChannel(weightChannel);
+
+                continue;
+            }
+
+            // Handle skeletal animation channels
+            if (clip->GetAnimationType() == AnimationType::Skeletal && isBoneChannel)
+            {
+                AnimationChannel animChannel;
+                animChannel.targetBoneIndex = jointIt->second;
+                animChannel.interpolation = interpType;
+                animChannel.times = times;
+
+                size_t keyCount = times.size();
+                if (interpType == AnimationInterpolation::CubicSpline)
+                {
+                    if (dataAccessor->count != keyCount * 3)
+                    {
+                        std::cerr << "[ERROR] Cubic spline data count mismatch for bone " << animChannel.targetBoneIndex << std::endl;
+                        continue;
+                    }
+
+                    if (channel->target_path == cgltf_animation_path_type_translation)
+                    {
+                        animChannel.translations.resize(keyCount);
+                        animChannel.inTangents.resize(keyCount);
+                        animChannel.outTangents.resize(keyCount);
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[3], val[3], outTan[3];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
+
+                            animChannel.inTangents[v] = Vector3(inTan[0], inTan[1], inTan[2]);
+                            animChannel.translations[v] = Vector3(val[0], val[1], val[2]);
+                            animChannel.outTangents[v] = Vector3(outTan[0], outTan[1], outTan[2]);
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_rotation)
+                    {
+                        animChannel.rotations.resize(keyCount);
+                        animChannel.inTangentsQuat.resize(keyCount);
+                        animChannel.outTangentsQuat.resize(keyCount);
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[4], val[4], outTan[4];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 4);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 4);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 4);
+
+                            animChannel.inTangentsQuat[v] = Quaternion(inTan[0], inTan[1], inTan[2], inTan[3]).Normalize();
+                            animChannel.rotations[v] = Quaternion(val[0], val[1], val[2], val[3]).Normalize();
+                            animChannel.outTangentsQuat[v] = Quaternion(outTan[0], outTan[1], outTan[2], outTan[3]).Normalize();
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_scale)
+                    {
+                        animChannel.scales.resize(keyCount);
+                        animChannel.inTangentsScale.resize(keyCount);
+                        animChannel.outTangentsScale.resize(keyCount);
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[3], val[3], outTan[3];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
+
+                            animChannel.inTangentsScale[v] = Vector3(inTan[0], inTan[1], inTan[2]);
+                            animChannel.scales[v] = Vector3(val[0], val[1], val[2]);
+                            animChannel.outTangentsScale[v] = Vector3(outTan[0], outTan[1], outTan[2]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (channel->target_path == cgltf_animation_path_type_translation)
+                    {
+                        animChannel.translations.resize(dataAccessor->count); // Todo: Should this be keyCount?
+                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        {
+                            float trans[3];
+                            cgltf_accessor_read_float(dataAccessor, v, trans, 3);
+                            animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_rotation)
+                    {
+                        animChannel.rotations.resize(dataAccessor->count); // Todo: Should this be keyCount?
+                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        {
+                            float rot[4];
+                            cgltf_accessor_read_float(dataAccessor, v, rot, 4);
+                            animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_scale)
+                    {
+                        animChannel.scales.resize(dataAccessor->count); // Todo: Should this be keyCount?
+                        for (size_t v = 0; v < dataAccessor->count; ++v) // Todo: Should this be keyCount?
+                        {
+                            float scale[3];
+                            cgltf_accessor_read_float(dataAccessor, v, scale, 3);
+                            animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                        }
+                    }
+                }
+
+                clip->AddChannel(animChannel);
+            }
+
+            // Handle node-based animation channels
+            else if (clip->GetAnimationType() == AnimationType::NodeBased)
+            {
+                NodeAnimationChannel nodeChannel;
+                auto nodeIt = nodeToIndexMap.find(channel->target_node);
+                if (nodeIt != nodeToIndexMap.end())
+                    nodeChannel.targetNodeIndex = nodeIt->second;
+                else
+                {
+                    std::cout << "[WARNING] Node not found in node map for animation channel" << std::endl;
+                    continue;
+                }
+
+                nodeChannel.interpolation = interpType;
+                nodeChannel.times = times;
+                size_t keyCount = times.size();
+                if (interpType == AnimationInterpolation::CubicSpline)
+                {
+                    if (dataAccessor->count != keyCount * 3)
+                    {
+                        std::cerr << "[ERROR] Cubic spline data count mismatch for node " << nodeChannel.targetNodeIndex << std::endl;
+                        continue;
+                    }
+
+                    if (channel->target_path == cgltf_animation_path_type_translation)
+                    {
+                        nodeChannel.translations.resize(keyCount);
+                        nodeChannel.inTangents.resize(keyCount);
+                        nodeChannel.outTangents.resize(keyCount);
+
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[3], val[3], outTan[3];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
+                            nodeChannel.inTangents[v] = Vector3(inTan[0], inTan[1], inTan[2]);
+                            nodeChannel.translations[v] = Vector3(val[0], val[1], val[2]);
+                            nodeChannel.outTangents[v] = Vector3(outTan[0], outTan[1], outTan[2]);
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_rotation)
+                    {
+                        nodeChannel.rotations.resize(keyCount);
+                        nodeChannel.inTangentsQuat.resize(keyCount);
+                        nodeChannel.outTangentsQuat.resize(keyCount);
+
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[4], val[4], outTan[4];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 4);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 4);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 4);
+
+                            nodeChannel.inTangentsQuat[v] = Quaternion(inTan[0], inTan[1], inTan[2], inTan[3]).Normalize();
+                            nodeChannel.rotations[v] = Quaternion(val[0], val[1], val[2], val[3]).Normalize();
+                            nodeChannel.outTangentsQuat[v] = Quaternion(outTan[0], outTan[1], outTan[2], outTan[3]).Normalize();
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_scale)
+                    {
+                        nodeChannel.scales.resize(keyCount);
+                        nodeChannel.inTangentsScale.resize(keyCount);
+                        nodeChannel.outTangentsScale.resize(keyCount);
+
+                        for (size_t v = 0; v < keyCount; ++v)
+                        {
+                            float inTan[3], val[3], outTan[3];
+                            cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
+                            cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
+
+                            nodeChannel.inTangentsScale[v] = Vector3(inTan[0], inTan[1], inTan[2]);
+                            nodeChannel.scales[v] = Vector3(val[0], val[1], val[2]);
+                            nodeChannel.outTangentsScale[v] = Vector3(outTan[0], outTan[1], outTan[2]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (channel->target_path == cgltf_animation_path_type_translation)
+                    {
+                        nodeChannel.translations.resize(dataAccessor->count);
+                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        {
+                            float trans[3];
+                            cgltf_accessor_read_float(dataAccessor, v, trans, 3);
+                            nodeChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_rotation)
+                    {
+                        nodeChannel.rotations.resize(dataAccessor->count);
+                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        {
+                            float rot[4];
+                            cgltf_accessor_read_float(dataAccessor, v, rot, 4);
+                            nodeChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                        }
+                    }
+                    else if (channel->target_path == cgltf_animation_path_type_scale)
+                    {
+                        nodeChannel.scales.resize(dataAccessor->count);
+                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        {
+                            float scale[3];
+                            cgltf_accessor_read_float(dataAccessor, v, scale, 3);
+                            nodeChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                        }
+                    }
+                }
+
+                clip->AddNodeChannel(nodeChannel);
+            }
+        }
+
+        clip->SetDuration(maxTime);
+        return clip;
+    }
+
+    std::vector<AnimationClip*> LoadAnimations(cgltf_data* data, const std::unordered_map<cgltf_node*, int>& nodeToJointMap, const std::unordered_map<cgltf_node*, int>& nodeToIndexMap)
+    {
+        std::vector<AnimationClip*> clips;
+
+        for (size_t i = 0; i < data->animations_count; ++i)
+        {
+            cgltf_animation* anim = &data->animations[i];
+            AnimationClip* clip = LoadAnimation(anim, i, nodeToJointMap, nodeToIndexMap);
+            clips.push_back(clip);
+        }
+
+        return clips;
+    }
 
     Model* LoadGLTF(std::string_view filePath, bool mergeMeshes, int sceneIndex)
     {
@@ -840,15 +1222,6 @@ namespace cl
         std::function<void(cgltf_node*, const Matrix4&)> ProcessNode;
         ProcessNode = [&](cgltf_node* node, const Matrix4& parentTransform)
         {
-            //Vector3 translation, scale;
-            //Quaternion rotation;
-            //ExtractNodeTransform(node, translation, rotation, scale);
-
-            //Matrix4 t = Matrix4::Translate(translation);
-            //Matrix4 r = Matrix4::FromQuaternion(rotation);
-            //Matrix4 s = Matrix4::Scale(scale);
-            //Matrix4 local = t * r * s;
-
             Matrix4 local;
             cgltf_node_transform_local(node, local.m);
 
@@ -883,399 +1256,9 @@ namespace cl
             nodeToIndexMap[&data->nodes[i]] = static_cast<int>(i);
 
         // Load animations
-        for (size_t i = 0; i < data->animations_count; ++i)
-        {
-            cgltf_animation* anim = &data->animations[i];
-            AnimationClip* clip = new AnimationClip();
-
-            clip->SetName(anim->name ? anim->name : ("Animation_" + std::to_string(i)));
-
-            float maxTime = 0.0f;
-            bool hasSkeletalChannels = false;
-            bool hasNodeChannels = false;
-            bool hasWeightChannels = false;
-
-            // Determine animation type
-            for (size_t j = 0; j < anim->channels_count; ++j)
-            {
-                cgltf_animation_channel* channel = &anim->channels[j];
-                if (!channel->target_node)
-                    continue;
-
-                if (channel->target_path == cgltf_animation_path_type_weights)
-                    hasWeightChannels = true;
-                else if (nodeToJointMap.find(channel->target_node) != nodeToJointMap.end())
-                    hasSkeletalChannels = true;
-                else
-                    hasNodeChannels = true;
-            }
-
-            if (hasSkeletalChannels && !hasNodeChannels)
-                clip->SetAnimationType(AnimationType::Skeletal);
-            else if (!hasSkeletalChannels && hasNodeChannels)
-                clip->SetAnimationType(AnimationType::NodeBased);
-            else if (hasSkeletalChannels && hasNodeChannels)
-            {
-                clip->SetAnimationType(AnimationType::Skeletal);
-                std::cout << "[WARNING] Animation '" << clip->GetName() << "' has both skeletal and node channels. Using skeletal mode." << std::endl;
-            }
-            else
-                clip->SetAnimationType(AnimationType::NodeBased);
-
-            // Load animation channels
-            for (size_t j = 0; j < anim->channels_count; ++j)
-            {
-                cgltf_animation_channel* channel = &anim->channels[j];
-                cgltf_animation_sampler* sampler = channel->sampler;
-
-                if (!channel->target_node || !sampler)
-                    continue;
-
-                AnimationInterpolation interpType = AnimationInterpolation::Linear;
-                switch (sampler->interpolation)
-                {
-                case cgltf_interpolation_type_linear:
-                    interpType = AnimationInterpolation::Linear;
-                    break;
-                case cgltf_interpolation_type_step:
-                    interpType = AnimationInterpolation::Step;
-                    break;
-                case cgltf_interpolation_type_cubic_spline:
-                    interpType = AnimationInterpolation::CubicSpline;
-                    break;
-                default:
-                    interpType = AnimationInterpolation::Linear;
-                    break;
-                }
-
-                cgltf_accessor* timeAccessor = sampler->input;
-                std::vector<float> times(timeAccessor->count);
-                for (size_t t = 0; t < timeAccessor->count; ++t)
-                {
-                    cgltf_accessor_read_float(timeAccessor, t, &times[t], 1);
-                    if (times[t] > maxTime)
-                        maxTime = times[t];
-                }
-
-                cgltf_accessor* dataAccessor = sampler->output;
-                auto jointIt = nodeToJointMap.find(channel->target_node);
-                bool isBoneChannel = (jointIt != nodeToJointMap.end());
-
-                // Handle morph target weight animation
-                if (channel->target_path == cgltf_animation_path_type_weights)
-                {
-                    MorphWeightChannel weightChannel;
-
-                    auto nodeIt = nodeToIndexMap.find(channel->target_node);
-                    if (nodeIt != nodeToIndexMap.end())
-                        weightChannel.targetNodeIndex = nodeIt->second;
-                    else
-                    {
-                        std::cout << "[WARNING] Node not found for morph weight animation" << std::endl;
-                        continue;
-                    }
-
-                    weightChannel.interpolation = interpType;
-                    weightChannel.times = times;
-
-                    // Calculate number of morph targets from the node
-                    size_t weightsPerFrame = 0;
-                    if (channel->target_node->mesh && channel->target_node->mesh->primitives_count > 0)
-                        weightsPerFrame = channel->target_node->mesh->primitives[0].targets_count;
-
-                    if (weightsPerFrame == 0)
-                    {
-                        std::cout << "[WARNING] Morph weight animation found but no morph targets on node" << std::endl;
-                        continue;
-                    }
-
-                    size_t keyCount = times.size();
-
-                    if (interpType == AnimationInterpolation::CubicSpline)
-                    {
-                        // For cubic spline, data has 3x values: inTangent, value, outTangent
-                        if (dataAccessor->count != keyCount * 3 * weightsPerFrame)
-                        {
-                            std::cerr << "[ERROR] Cubic spline morph weight data count mismatch" << std::endl;
-                            continue;
-                        }
-
-                        weightChannel.weights.resize(keyCount);
-                        for (size_t k = 0; k < keyCount; ++k)
-                        {
-                            weightChannel.weights[k].resize(weightsPerFrame);
-
-                            // Skip in-tangent, read value, skip out-tangent
-                            size_t baseIdx = k * 3 * weightsPerFrame + weightsPerFrame; // +weightsPerFrame to skip in-tangent
-
-                            for (size_t w = 0; w < weightsPerFrame; ++w)
-                                cgltf_accessor_read_float(dataAccessor, baseIdx + w, &weightChannel.weights[k][w], 1);
-                        }
-                    }
-                    else
-                    {
-                        // Linear or Step interpolation
-                        if (dataAccessor->count != keyCount * weightsPerFrame)
-                        {
-                            std::cerr << "[ERROR] Morph weight data count mismatch" << std::endl;
-                            continue;
-                        }
-
-                        weightChannel.weights.resize(keyCount);
-                        for (size_t k = 0; k < keyCount; ++k)
-                        {
-                            weightChannel.weights[k].resize(weightsPerFrame);
-                            for (size_t w = 0; w < weightsPerFrame; ++w)
-                            {
-                                cgltf_accessor_read_float(dataAccessor, k * weightsPerFrame + w,
-                                    &weightChannel.weights[k][w], 1);
-                            }
-                        }
-                    }
-
-                    clip->AddMorphWeightChannel(weightChannel);
-                    continue;
-                }
-
-                // Handle skeletal animation channels
-                if (clip->GetAnimationType() == AnimationType::Skeletal && isBoneChannel)
-                {
-                    AnimationChannel animChannel;
-                    animChannel.targetBoneIndex = jointIt->second;
-                    animChannel.interpolation = interpType;
-                    animChannel.times = times;
-
-                    size_t keyCount = times.size();
-
-                    if (interpType == AnimationInterpolation::CubicSpline)
-                    {
-                        if (dataAccessor->count != keyCount * 3)
-                        {
-                            std::cerr << "[ERROR] Cubic spline data count mismatch for bone " << animChannel.targetBoneIndex << std::endl;
-                            continue;
-                        }
-
-                        if (channel->target_path == cgltf_animation_path_type_translation)
-                        {
-                            animChannel.translations.resize(keyCount);
-                            animChannel.inTangents.resize(keyCount);
-                            animChannel.outTangents.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[3], val[3], outTan[3];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
-
-                                animChannel.inTangents[v] = Vector3(inTan[0], inTan[1], inTan[2]);
-                                animChannel.translations[v] = Vector3(val[0], val[1], val[2]);
-                                animChannel.outTangents[v] = Vector3(outTan[0], outTan[1], outTan[2]);
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_rotation)
-                        {
-                            animChannel.rotations.resize(keyCount);
-                            animChannel.inTangentsQuat.resize(keyCount);
-                            animChannel.outTangentsQuat.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[4], val[4], outTan[4];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 4);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 4);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 4);
-
-                                animChannel.inTangentsQuat[v] = Quaternion(inTan[0], inTan[1], inTan[2], inTan[3]).Normalize();
-                                animChannel.rotations[v] = Quaternion(val[0], val[1], val[2], val[3]).Normalize();
-                                animChannel.outTangentsQuat[v] = Quaternion(outTan[0], outTan[1], outTan[2], outTan[3]).Normalize();
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_scale)
-                        {
-                            animChannel.scales.resize(keyCount);
-                            animChannel.inTangentsScale.resize(keyCount);
-                            animChannel.outTangentsScale.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[3], val[3], outTan[3];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
-
-                                animChannel.inTangentsScale[v] = Vector3(inTan[0], inTan[1], inTan[2]);
-                                animChannel.scales[v] = Vector3(val[0], val[1], val[2]);
-                                animChannel.outTangentsScale[v] = Vector3(outTan[0], outTan[1], outTan[2]);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (channel->target_path == cgltf_animation_path_type_translation)
-                        {
-                            animChannel.translations.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float trans[3];
-                                cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                                animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_rotation)
-                        {
-                            animChannel.rotations.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float rot[4];
-                                cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                                animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_scale)
-                        {
-                            animChannel.scales.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float scale[3];
-                                cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                                animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
-                            }
-                        }
-                    }
-
-                    clip->AddChannel(animChannel);
-                }
-                // Handle node-based animation channels
-                else if (clip->GetAnimationType() == AnimationType::NodeBased)
-                {
-                    NodeAnimationChannel nodeChannel;
-
-                    auto nodeIt = nodeToIndexMap.find(channel->target_node);
-                    if (nodeIt != nodeToIndexMap.end())
-                        nodeChannel.targetNodeIndex = nodeIt->second;
-                    else
-                    {
-                        std::cout << "[WARNING] Node not found in node map for animation channel" << std::endl;
-                        continue;
-                    }
-
-                    nodeChannel.interpolation = interpType;
-                    nodeChannel.times = times;
-
-                    size_t keyCount = times.size();
-
-                    if (interpType == AnimationInterpolation::CubicSpline)
-                    {
-                        if (dataAccessor->count != keyCount * 3)
-                        {
-                            std::cerr << "[ERROR] Cubic spline data count mismatch for node " << nodeChannel.targetNodeIndex << std::endl;
-                            continue;
-                        }
-
-                        if (channel->target_path == cgltf_animation_path_type_translation)
-                        {
-                            nodeChannel.translations.resize(keyCount);
-                            nodeChannel.inTangents.resize(keyCount);
-                            nodeChannel.outTangents.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[3], val[3], outTan[3];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
-
-                                nodeChannel.inTangents[v] = Vector3(inTan[0], inTan[1], inTan[2]);
-                                nodeChannel.translations[v] = Vector3(val[0], val[1], val[2]);
-                                nodeChannel.outTangents[v] = Vector3(outTan[0], outTan[1], outTan[2]);
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_rotation)
-                        {
-                            nodeChannel.rotations.resize(keyCount);
-                            nodeChannel.inTangentsQuat.resize(keyCount);
-                            nodeChannel.outTangentsQuat.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[4], val[4], outTan[4];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 4);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 4);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 4);
-
-                                nodeChannel.inTangentsQuat[v] = Quaternion(inTan[0], inTan[1], inTan[2], inTan[3]).Normalize();
-                                nodeChannel.rotations[v] = Quaternion(val[0], val[1], val[2], val[3]).Normalize();
-                                nodeChannel.outTangentsQuat[v] = Quaternion(outTan[0], outTan[1], outTan[2], outTan[3]).Normalize();
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_scale)
-                        {
-                            nodeChannel.scales.resize(keyCount);
-                            nodeChannel.inTangentsScale.resize(keyCount);
-                            nodeChannel.outTangentsScale.resize(keyCount);
-
-                            for (size_t v = 0; v < keyCount; ++v)
-                            {
-                                float inTan[3], val[3], outTan[3];
-                                cgltf_accessor_read_float(dataAccessor, v * 3, inTan, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 1, val, 3);
-                                cgltf_accessor_read_float(dataAccessor, v * 3 + 2, outTan, 3);
-
-                                nodeChannel.inTangentsScale[v] = Vector3(inTan[0], inTan[1], inTan[2]);
-                                nodeChannel.scales[v] = Vector3(val[0], val[1], val[2]);
-                                nodeChannel.outTangentsScale[v] = Vector3(outTan[0], outTan[1], outTan[2]);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (channel->target_path == cgltf_animation_path_type_translation)
-                        {
-                            nodeChannel.translations.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float trans[3];
-                                cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                                nodeChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_rotation)
-                        {
-                            nodeChannel.rotations.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float rot[4];
-                                cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                                nodeChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
-                            }
-                        }
-                        else if (channel->target_path == cgltf_animation_path_type_scale)
-                        {
-                            nodeChannel.scales.resize(dataAccessor->count);
-                            for (size_t v = 0; v < dataAccessor->count; ++v)
-                            {
-                                float scale[3];
-                                cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                                nodeChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
-                            }
-                        }
-                    }
-
-                    if (nodeChannel.translations.empty())
-                        nodeChannel.translations.resize(keyCount, Vector3(0.0f, 0.0f, 0.0f));
-                    if (nodeChannel.rotations.empty())
-                        nodeChannel.rotations.resize(keyCount, Quaternion(0.0f, 0.0f, 0.0f, 1.0f));
-                    if (nodeChannel.scales.empty())
-                        nodeChannel.scales.resize(keyCount, Vector3(1.0f, 1.0f, 1.0f));
-
-                    clip->AddNodeChannel(nodeChannel);
-                }
-            }
-
-            clip->SetDuration(maxTime);
-            model->AddAnimation(clip);
-        }
+        std::vector<AnimationClip*> animClips = LoadAnimations(data, nodeToJointMap, nodeToIndexMap);
+        for (AnimationClip* animClip : animClips)
+            model->AddAnimation(animClip);
 
         model->SetNodeCount(static_cast<int>(data->nodes_count));
 
@@ -1327,131 +1310,13 @@ namespace cl
                 nodeToJointMap[skin->joints[i]] = static_cast<int>(i);
         }
 
+        std::unordered_map<cgltf_node*, int> nodeToIndexMap;
+        for (size_t i = 0; i < data->nodes_count; ++i)
+            nodeToIndexMap[&data->nodes[i]] = static_cast<int>(i);
+
         cgltf_animation* anim = &data->animations[animationIndex];
-        AnimationClip* clip = new AnimationClip();
+        AnimationClip* clip = LoadAnimation(anim, animationIndex, nodeToJointMap, nodeToIndexMap);
 
-        if (anim->name)
-            clip->SetName(anim->name);
-        else
-            clip->SetName("Animation_" + std::to_string(animationIndex));
-
-        float maxTime = 0.0f;
-        for (size_t j = 0; j < anim->channels_count; ++j)
-        {
-            cgltf_animation_channel* channel = &anim->channels[j];
-            cgltf_animation_sampler* sampler = channel->sampler;
-            if (!channel->target_node)
-                continue;
-
-            auto it = nodeToJointMap.find(channel->target_node);
-            if (it == nodeToJointMap.end())
-                continue;
-
-            int boneIndex = it->second;
-            AnimationChannel animChannel;
-            animChannel.targetBoneIndex = boneIndex;
-
-            switch (sampler->interpolation)
-            {
-            case cgltf_interpolation_type_linear:
-                animChannel.interpolation = AnimationInterpolation::Linear;
-                break;
-            case cgltf_interpolation_type_step:
-                animChannel.interpolation = AnimationInterpolation::Step;
-                break;
-            case cgltf_interpolation_type_cubic_spline:
-                animChannel.interpolation = AnimationInterpolation::CubicSpline;
-                break;
-            default:
-                animChannel.interpolation = AnimationInterpolation::Linear;
-                break;
-            }
-            cgltf_accessor* timeAccessor = sampler->input;
-            animChannel.times.resize(timeAccessor->count);
-
-            for (size_t t = 0; t < timeAccessor->count; ++t)
-            {
-                cgltf_accessor_read_float(timeAccessor, t, &animChannel.times[t], 1);
-                if (animChannel.times[t] > maxTime)
-                    maxTime = animChannel.times[t];
-            }
-
-            cgltf_accessor* dataAccessor = sampler->output;
-            if (channel->target_path == cgltf_animation_path_type_translation)
-            {
-                animChannel.translations.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float trans[3];
-                    cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                    animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
-                }
-
-                if (animChannel.rotations.empty())
-                {
-                    animChannel.rotations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                }
-
-                if (animChannel.scales.empty())
-                {
-                    animChannel.scales.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                }
-            }
-            else if (channel->target_path == cgltf_animation_path_type_rotation)
-            {
-                animChannel.rotations.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float rot[4];
-                    cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                    animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
-                }
-
-                //if (animChannel.translations.empty())
-                //{
-                //    animChannel.translations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                //}
-
-                //if (animChannel.scales.empty())
-                //{
-                //    animChannel.scales.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                //}
-            }
-            else if (channel->target_path == cgltf_animation_path_type_scale)
-            {
-                animChannel.scales.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float scale[3];
-                    cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                    animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
-                }
-
-                //if (animChannel.translations.empty())
-                //{
-                //    animChannel.translations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                //}
-
-                //if (animChannel.rotations.empty())
-                //{
-                //    animChannel.rotations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                //}
-            }
-            clip->AddChannel(animChannel);
-        }
-        clip->SetDuration(maxTime);
         cgltf_free(data);
         return clip;
     }
@@ -1467,10 +1332,11 @@ namespace cl
         cgltf_options options = {};
         cgltf_data* data = nullptr;
         cgltf_result result = cgltf_parse_file(&options, filePath.data(), &data);
+
         if (result != cgltf_result_success)
             return nullptr;
-
         result = cgltf_load_buffers(&options, data, filePath.data());
+
         if (result != cgltf_result_success)
         {
             cgltf_free(data);
@@ -1485,12 +1351,18 @@ namespace cl
                 nodeToJointMap[skin->joints[i]] = static_cast<int>(i);
         }
 
+        std::unordered_map<cgltf_node*, int> nodeToIndexMap;
+        for (size_t i = 0; i < data->nodes_count; ++i)
+            nodeToIndexMap[&data->nodes[i]] = static_cast<int>(i);
+
         cgltf_animation* anim = nullptr;
+        size_t animIndex = 0;
         for (size_t i = 0; i < data->animations_count; ++i)
         {
             if (data->animations[i].name && std::string(data->animations[i].name) == animationName)
             {
                 anim = &data->animations[i];
+                animIndex = i;
                 break;
             }
         }
@@ -1501,126 +1373,7 @@ namespace cl
             return nullptr;
         }
 
-        AnimationClip* clip = new AnimationClip();
-        clip->SetName(animationName.data());
-        float maxTime = 0.0f;
-
-        for (size_t j = 0; j < anim->channels_count; ++j)
-        {
-            cgltf_animation_channel* channel = &anim->channels[j];
-            cgltf_animation_sampler* sampler = channel->sampler;
-            if (!channel->target_node)
-                continue;
-
-            auto it = nodeToJointMap.find(channel->target_node);
-            if (it == nodeToJointMap.end())
-                continue;
-
-            int boneIndex = it->second;
-            AnimationChannel animChannel;
-            animChannel.targetBoneIndex = boneIndex;
-
-            switch (sampler->interpolation)
-            {
-            case cgltf_interpolation_type_linear:
-                animChannel.interpolation = AnimationInterpolation::Linear;
-                break;
-            case cgltf_interpolation_type_step:
-                animChannel.interpolation = AnimationInterpolation::Step;
-                break;
-            case cgltf_interpolation_type_cubic_spline:
-                animChannel.interpolation = AnimationInterpolation::CubicSpline;
-                break;
-            default:
-                animChannel.interpolation = AnimationInterpolation::Linear;
-                break;
-            }
-
-            cgltf_accessor* timeAccessor = sampler->input;
-            animChannel.times.resize(timeAccessor->count);
-            for (size_t t = 0; t < timeAccessor->count; ++t)
-            {
-                cgltf_accessor_read_float(timeAccessor, t, &animChannel.times[t], 1);
-                if (animChannel.times[t] > maxTime)
-                    maxTime = animChannel.times[t];
-            }
-
-            cgltf_accessor* dataAccessor = sampler->output;
-            if (channel->target_path == cgltf_animation_path_type_translation)
-            {
-                animChannel.translations.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float trans[3];
-                    cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                    animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
-                }
-
-                if (animChannel.rotations.empty())
-                {
-                    animChannel.rotations.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                }
-
-                if (animChannel.scales.empty())
-                {
-                    animChannel.scales.resize(animChannel.times.size());
-                    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                }
-            }
-            else if (channel->target_path == cgltf_animation_path_type_rotation)
-            {
-                animChannel.rotations.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float rot[4];
-                    cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                    animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
-                }
-
-                //if (animChannel.translations.empty())
-                //{
-                //    animChannel.translations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                //}
-
-                //if (animChannel.scales.empty())
-                //{
-                //    animChannel.scales.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                //}
-            }
-            else if (channel->target_path == cgltf_animation_path_type_scale)
-            {
-                animChannel.scales.resize(dataAccessor->count);
-                for (size_t v = 0; v < dataAccessor->count; ++v)
-                {
-                    float scale[3];
-                    cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                    animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
-                }
-
-                //if (animChannel.translations.empty())
-                //{
-                //    animChannel.translations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                //}
-
-                //if (animChannel.rotations.empty())
-                //{
-                //    animChannel.rotations.resize(animChannel.times.size());
-                //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                //}
-            }
-            clip->AddChannel(animChannel);
-        }
-        clip->SetDuration(maxTime);
+        AnimationClip* clip = LoadAnimation(anim, animIndex, nodeToJointMap, nodeToIndexMap);
         cgltf_free(data);
         return clip;
     }
@@ -1656,135 +1409,12 @@ namespace cl
                 nodeToJointMap[skin->joints[i]] = static_cast<int>(i);
         }
 
-        for (size_t i = 0; i < data->animations_count; ++i)
-        {
-            cgltf_animation* anim = &data->animations[i];
-            AnimationClip* clip = new AnimationClip();
+        std::unordered_map<cgltf_node*, int> nodeToIndexMap;
+        for (size_t i = 0; i < data->nodes_count; ++i)
+            nodeToIndexMap[&data->nodes[i]] = static_cast<int>(i);
 
-            if (anim->name)
-                clip->SetName(anim->name);
-            else
-                clip->SetName("Animation_" + std::to_string(i));
-            float maxTime = 0.0f;
+        clips = LoadAnimations(data, nodeToJointMap, nodeToIndexMap);
 
-            for (size_t j = 0; j < anim->channels_count; ++j)
-            {
-                cgltf_animation_channel* channel = &anim->channels[j];
-                cgltf_animation_sampler* sampler = channel->sampler;
-                if (!channel->target_node)
-                    continue;
-
-                auto it = nodeToJointMap.find(channel->target_node);
-                if (it == nodeToJointMap.end())
-                    continue;
-
-                int boneIndex = it->second;
-                AnimationChannel animChannel;
-                animChannel.targetBoneIndex = boneIndex;
-                switch (sampler->interpolation)
-                {
-                case cgltf_interpolation_type_linear:
-                    animChannel.interpolation = AnimationInterpolation::Linear;
-                    break;
-                case cgltf_interpolation_type_step:
-                    animChannel.interpolation = AnimationInterpolation::Step;
-                    break;
-                case cgltf_interpolation_type_cubic_spline:
-                    animChannel.interpolation = AnimationInterpolation::CubicSpline;
-                    break;
-                default:
-                    animChannel.interpolation = AnimationInterpolation::Linear;
-                    break;
-                }
-
-                cgltf_accessor* timeAccessor = sampler->input;
-                animChannel.times.resize(timeAccessor->count);
-
-                for (size_t t = 0; t < timeAccessor->count; ++t)
-                {
-                    cgltf_accessor_read_float(timeAccessor, t, &animChannel.times[t], 1);
-                    if (animChannel.times[t] > maxTime)
-                        maxTime = animChannel.times[t];
-                }
-
-                cgltf_accessor* dataAccessor = sampler->output;
-                if (channel->target_path == cgltf_animation_path_type_translation)
-                {
-                    animChannel.translations.resize(dataAccessor->count);
-                    for (size_t v = 0; v < dataAccessor->count; ++v)
-                    {
-                        float trans[3];
-                        cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                        animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
-                    }
-
-                    if (animChannel.rotations.empty())
-                    {
-                        animChannel.rotations.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                            animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                    }
-
-                    if (animChannel.scales.empty())
-                    {
-                        animChannel.scales.resize(animChannel.times.size());
-                        for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                            animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                    }
-                }
-                else if (channel->target_path == cgltf_animation_path_type_rotation)
-                {
-                    animChannel.rotations.resize(dataAccessor->count);
-                    for (size_t v = 0; v < dataAccessor->count; ++v)
-                    {
-                        float rot[4];
-                        cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                        animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]);
-                    }
-
-                    //if (animChannel.translations.empty())
-                    //{
-                    //    animChannel.translations.resize(animChannel.times.size());
-                    //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                    //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                    //}
-
-                    //if (animChannel.scales.empty())
-                    //{
-                    //    animChannel.scales.resize(animChannel.times.size());
-                    //    for (size_t v = 0; v < animChannel.scales.size(); ++v)
-                    //        animChannel.scales[v] = Vector3(1.0f, 1.0f, 1.0f);
-                    //}
-                }
-                else if (channel->target_path == cgltf_animation_path_type_scale)
-                {
-                    animChannel.scales.resize(dataAccessor->count);
-                    for (size_t v = 0; v < dataAccessor->count; ++v)
-                    {
-                        float scale[3];
-                        cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                        animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
-                    }
-
-                    //if (animChannel.translations.empty())
-                    //{
-                    //    animChannel.translations.resize(animChannel.times.size());
-                    //    for (size_t v = 0; v < animChannel.translations.size(); ++v)
-                    //        animChannel.translations[v] = Vector3(0.0f, 0.0f, 0.0f);
-                    //}
-
-                    //if (animChannel.rotations.empty())
-                    //{
-                    //    animChannel.rotations.resize(animChannel.times.size());
-                    //    for (size_t v = 0; v < animChannel.rotations.size(); ++v)
-                    //        animChannel.rotations[v] = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-                    //}
-                }
-                clip->AddChannel(animChannel);
-            }
-            clip->SetDuration(maxTime);
-            clips.push_back(clip);
-        }
         cgltf_free(data);
         return clips;
     }
