@@ -123,6 +123,11 @@ namespace cl
             m[0] = m[5] = m[10] = m[15] = 1.0f; // Identity
         }
 
+        Matrix4(const float* data)
+        {
+            memcpy(m, data, sizeof(float) * 16);
+        }
+
         static Matrix4 Identity() { return Matrix4(); }
 
         static Matrix4 Perspective(float fov, float aspect, float nearPlane, float farPlane);
