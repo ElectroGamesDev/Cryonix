@@ -166,6 +166,15 @@ namespace cl
         }
 
         bool operator!=(const Matrix4& other) const { return !(*this == other); }
+
+        Vector3 operator*(const Vector3& v) const
+        {
+            float x = m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12];
+            float y = m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13];
+            float z = m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14];
+
+            return Vector3(x, y, z);
+        }
     };
 
     struct Color
