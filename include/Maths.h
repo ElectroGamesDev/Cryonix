@@ -90,6 +90,8 @@ namespace cl
         static Quaternion FromEuler(float yaw, float pitch, float roll);
         static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
         static Quaternion FromMatrix(const Matrix4& m);
+        static Quaternion FromToRotation(const Vector3& from, const Vector3& to);
+
         Quaternion Inverse() const;
         Vector3 ToEuler() const;
         Matrix4 ToMatrix() const;
@@ -112,6 +114,8 @@ namespace cl
         bool operator!=(const Quaternion& other) const { return !(*this == other); }
         Quaternion operator-() const { return { -x, -y, -z, -w }; }
     };
+
+    Vector3 operator*(const Quaternion& q, const Vector3& v);
 
     struct Matrix4
     {

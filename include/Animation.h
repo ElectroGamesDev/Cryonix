@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include "Mesh.h"
+#include <functional>
 
 namespace cl
 {
@@ -107,7 +108,7 @@ namespace cl
         std::vector<Vector3> scales;
         AnimationInterpolation interpolation;
 
-        // Cubic spline iterpolation
+        // Cubic spline interpolation
         std::vector<Vector3> inTangents;
         std::vector<Vector3> outTangents;
         std::vector<Vector3> inTangentsScale;
@@ -143,22 +144,164 @@ namespace cl
     };
 
     class AnimationClip;
+    class Animator;
 
-    struct AnimationLayer
+    // Animation Events
+    struct AnimationEvent
     {
-        int id;
-        AnimationClip* clip;
-        float weight;
-        float timeScale;
-        float currentTime;
-        bool loop;
-        AnimationBlendMode blendMode;
-        int priority;
-        bool active;
+        float time;
+        std::string eventName;
+        std::string stringParameter;
+        float floatParameter;
+        int intParameter;
 
-        AnimationLayer()
-            : id(-1), clip(nullptr), weight(1.0f), timeScale(1.0f), currentTime(0.0f)
-            , loop(true), blendMode(AnimationBlendMode::Override), priority(0), active(false) {}
+        AnimationEvent() : time(0.0f), floatParameter(0.0f), intParameter(0) {}
+        AnimationEvent(float t, std::string_view name) : time(t), eventName(name), floatParameter(0.0f), intParameter(0) {}
+    };
+
+    using AnimationEventCallback = std::function<void(const AnimationEvent&)>;
+
+    struct FiredEvent
+    {
+        float time;
+        std::string eventName;
+
+        bool operator==(const FiredEvent& other) const
+        {
+            return std::abs(time - other.time) < 0.001f && eventName == other.eventName;
+        }
+    };
+
+    // Root Motion
+    struct RootMotionData
+    {
+        Vector3 deltaPosition;
+        Quaternion deltaRotation;
+        bool extractPosition;
+        bool extractRotation;
+        int rootBoneIndex;
+
+        RootMotionData()
+            : deltaPosition(0.0f, 0.0f, 0.0f)
+            , deltaRotation(0.0f, 0.0f, 0.0f, 1.0f)
+            , extractPosition(true)
+            , extractRotation(true)
+            , rootBoneIndex(0) {
+        }
+    };
+
+    // IK System
+    enum class IKSolverType
+    {
+        TwoBone, // For limbs
+        LookAt, // For head/spine
+        FABRIK, // Full body IK
+        CCD // Cyclic Coordinate Descent
+    };
+
+    struct JointConstraint
+    {
+        enum class Type { None, Hinge, BallAndSocket, Cone };
+
+        Type type;
+        Vector3 axis; // For hinge joints
+        float minAngle; // Constraint limits
+        float maxAngle;
+        Vector3 twistAxis; // For cone constraints
+        float coneAngle;
+
+        JointConstraint()
+            : type(Type::None)
+            , axis(0.0f, 1.0f, 0.0f)
+            , minAngle(-180.0f)
+            , maxAngle(180.0f)
+            , twistAxis(0.0f, 1.0f, 0.0f)
+            , coneAngle(45.0f) {
+        }
+    };
+
+
+    struct IKChain
+    {
+        IKSolverType solverType;
+        std::vector<int> boneIndices; // Chain of bones from root to tip
+        Vector3 targetPosition;
+        Quaternion targetRotation;
+        float weight;
+        bool enabled;
+
+        // Two-bone specific
+        Vector3 poleTarget; // For elbow/knee direction
+        bool usePoleTarget;
+
+        // Constraints
+        float maxIterations;
+        float tolerance;
+        std::vector<JointConstraint> jointConstraints;
+
+        // Rest pose support
+        std::vector<Quaternion> restPoseRotations;
+        bool useRestPose;
+
+        IKChain()
+            : solverType(IKSolverType::TwoBone)
+            , targetPosition(0.0f, 0.0f, 0.0f)
+            , targetRotation(0.0f, 0.0f, 0.0f, 1.0f)
+            , weight(1.0f)
+            , enabled(true)
+            , poleTarget(0.0f, 1.0f, 0.0f)
+            , usePoleTarget(false)
+            , maxIterations(10)
+            , tolerance(0.001f)
+            , useRestPose(true) {}
+    };
+
+    // State Machine
+    struct AnimationTransition
+    {
+        int fromStateId;
+        int toStateId;
+        float duration;
+        float exitTime;
+        bool hasExitTime;
+        bool canInterrupt;
+        float interruptibleAfter;
+
+        // Conditions
+        std::string conditionParameter;
+        enum class ConditionType
+        {
+            Greater,
+            Less,
+            Equal,
+            NotEqual,
+            True,
+            False
+        };
+        ConditionType conditionType;
+        float conditionValue;
+
+        struct Condition
+        {
+            std::string parameter;
+            ConditionType type;
+            float value;
+
+            Condition() : type(ConditionType::True), value(0.0f) {}
+            Condition(const std::string& p, ConditionType t, float v)
+                : parameter(p), type(t), value(v) {
+            }
+        };
+
+        std::vector<Condition> conditions;
+        bool useMultipleConditions;
+
+        AnimationTransition()
+            : fromStateId(-1), toStateId(-1), duration(0.3f)
+            , exitTime(0.75f), hasExitTime(true)
+            , canInterrupt(true), interruptibleAfter(0.0f)
+            , conditionType(ConditionType::True), conditionValue(0.0f)
+            , useMultipleConditions(false) {}
     };
 
     struct BlendTreeNode
@@ -179,6 +322,107 @@ namespace cl
 
         BlendTreeNode() : type(Type::Clip), clip(nullptr) {}
         ~BlendTreeNode() { for (auto* child : children) delete child; }
+    };
+
+    struct AnimationState
+    {
+        int id;
+        std::string name;
+        AnimationClip* clip;
+        BlendTreeNode* blendTree;
+        float speed;
+        bool loop;
+        int layer;
+        std::vector<AnimationTransition> transitions;
+
+        // State callbacks
+        std::function<void()> onEnter;
+        std::function<void()> onExit;
+        std::function<void(float)> onUpdate;
+
+        AnimationState()
+            : id(-1), clip(nullptr), blendTree(nullptr), speed(1.0f), loop(true), layer(0) {}
+    };
+
+    class AnimationStateMachine
+    {
+    public:
+        AnimationStateMachine();
+        ~AnimationStateMachine();
+
+        int CreateState(const std::string& name, AnimationClip* clip = nullptr);
+        void RemoveState(int stateId);
+        AnimationState* GetState(int stateId);
+        AnimationState* GetState(const std::string& name);
+
+        void AddTransition(int fromStateId, int toStateId, float duration = 0.3f);
+        void SetTransitionCondition(int fromStateId, int toStateId, const std::string& parameter, AnimationTransition::ConditionType type, float value);
+        void AddTransitionCondition(int fromStateId, int toStateId, const std::string& parameter, AnimationTransition::ConditionType type, float value);
+
+        void SetStateLayer(int stateId, int layer);
+        void SetLayerWeight(int layer, float weight);
+        float GetLayerWeight(int layer) const;
+        void SetLayerMask(int layer, const std::vector<int>& boneIndices);
+
+        void SetCurrentState(int stateId);
+        int GetCurrentStateId() const { return m_currentStateId; }
+        AnimationState* GetCurrentState();
+
+        void SetParameter(const std::string& name, float value);
+        void SetParameter(const std::string& name, bool value);
+        float GetParameterFloat(const std::string& name) const;
+        bool GetParameterBool(const std::string& name) const;
+
+        void Update(float deltaTime, Animator* animator, std::vector<std::shared_ptr<Mesh>>& meshes);
+
+        bool IsTransitioning() const { return m_isTransitioning; }
+        float GetTransitionProgress() const;
+
+    private:
+        std::vector<AnimationState> m_states;
+        std::unordered_map<std::string, int> m_stateNames;
+        int m_nextStateId;
+        int m_currentStateId;
+        float m_currentStateTime;
+        Vector3 m_blendedRootMotionDelta;
+        Quaternion m_blendedRootMotionRotation;
+
+        // Transition state
+        bool m_isTransitioning;
+        AnimationTransition m_activeTransition;
+        float m_transitionTime;
+        int m_transitionTargetStateId;
+
+        // Parameters
+        std::unordered_map<std::string, float> m_floatParameters;
+        std::unordered_map<std::string, bool> m_boolParameters;
+
+        // Layers
+        std::unordered_map<int, float> m_layerWeights;
+        std::unordered_map<int, std::vector<int>> m_layerMasks;
+
+        void BlendRootMotion(Animator* animator, AnimationClip* fromClip, AnimationClip* toClip, float blend);
+        void EvaluateLayeredStates(float deltaTime, Animator* animator, std::vector<std::shared_ptr<Mesh>>& meshes);
+
+        bool CheckTransitionConditions(const AnimationTransition& transition);
+        void StartTransition(const AnimationTransition& transition);
+    };
+
+    struct AnimationLayer
+    {
+        int id;
+        AnimationClip* clip;
+        float weight;
+        float timeScale;
+        float currentTime;
+        bool loop;
+        AnimationBlendMode blendMode;
+        int priority;
+        bool active;
+
+        AnimationLayer()
+            : id(-1), clip(nullptr), weight(1.0f), timeScale(1.0f), currentTime(0.0f)
+            , loop(true), blendMode(AnimationBlendMode::Override), priority(0), active(false) {}
     };
 
     struct CrossfadeInfo
@@ -211,6 +455,15 @@ namespace cl
         void SetDuration(float duration) { m_duration = duration; }
         float GetDuration() const { return m_duration; }
 
+        void AddEvent(const AnimationEvent& event);
+        const std::vector<AnimationEvent>& GetEvents() const { return m_events; }
+        void ClearEvents() { m_events.clear(); }
+
+        void SetRootMotionEnabled(bool enabled) { m_rootMotionEnabled = enabled; }
+        bool IsRootMotionEnabled() const { return m_rootMotionEnabled; }
+        void SetRootBoneIndex(int index) { m_rootBoneIndex = index; }
+        int GetRootBoneIndex() const { return m_rootBoneIndex; }
+
         void AddChannel(const AnimationChannel& channel) { m_channels.push_back(channel); }
         const std::vector<AnimationChannel>& GetChannels() const { return m_channels; }
 
@@ -228,14 +481,21 @@ namespace cl
     private:
         std::string m_name;
         float m_duration;
+        std::vector<AnimationEvent> m_events;
+        bool m_rootMotionEnabled;
+        int m_rootBoneIndex;
         std::vector<AnimationChannel> m_channels;
         std::vector<NodeAnimationChannel> m_nodeChannels;
         std::vector<MorphWeightChannel> m_morphWeightChannels;
         AnimationType m_animationType = AnimationType::Skeletal;
+
+        void SortEvents();
     };
 
     class Animator
     {
+        friend class AnimationStateMachine;
+
     public:
         Animator();
         ~Animator();
@@ -261,6 +521,9 @@ namespace cl
 
         void SetLooping(bool loop) { m_loop = loop; }
         bool IsLooping() const { return m_loop; }
+
+        void SetLocalTransforms(const std::vector<Matrix4>& transforms) { m_localTransforms = transforms; }
+        const std::vector<Matrix4>& GetLocalTransforms() const { return m_localTransforms; }
 
         // Multi-layer animation
         int CreateLayer(const std::string& name, int priority = 0);
@@ -296,6 +559,31 @@ namespace cl
         void SetAdditiveReferenceClip(AnimationClip* clip) { m_additiveRefClip = clip; }
         AnimationClip* GetAdditiveReferenceClip() const { return m_additiveRefClip; }
 
+        // Root Motion
+        void SetRootMotionEnabled(bool enabled) { m_rootMotionEnabled = enabled; }
+        bool IsRootMotionEnabled() const { return m_rootMotionEnabled; }
+        const RootMotionData& GetRootMotion() const { return m_rootMotion; }
+        void ClearRootMotion();
+        void SetRootMotionScale(const Vector3& scale) { m_rootMotionScale = scale; }
+
+        // Animation Events
+        void SetEventCallback(AnimationEventCallback callback) { m_eventCallback = callback; }
+        void ClearEventCallback() { m_eventCallback = nullptr; }
+
+        // IK System
+        int AddIKChain(IKSolverType type, const std::vector<int>& boneIndices);
+        void RemoveIKChain(int chainIndex);
+        IKChain* GetIKChain(int chainIndex);
+        void SetIKTarget(int chainIndex, const Vector3& position, const Quaternion& rotation);
+        void SetIKWeight(int chainIndex, float weight);
+        void SetIKEnabled(int chainIndex, bool enabled);
+        void SetIKPoleTarget(int chainIndex, const Vector3& poleTarget);
+
+        // State Machine
+        void SetStateMachine(AnimationStateMachine* stateMachine);
+        AnimationStateMachine* GetStateMachine() const { return m_stateMachine; }
+        bool HasStateMachine() const { return m_stateMachine != nullptr; }
+
         const std::vector<Matrix4>& GetBoneMatrices() const { return m_boneMatrices; }
         const std::vector<Matrix4>& GetFinalBoneMatrices() const
         {
@@ -309,6 +597,7 @@ namespace cl
 
         const std::vector<Matrix4>& GetNodeTransforms() const { return m_nodeTransforms; }
         Matrix4 GetNodeTransform(int nodeIndex) const;
+
     private:
         Skeleton* m_skeleton;
         AnimationClip* m_currentClip;
@@ -330,21 +619,66 @@ namespace cl
         std::vector<Matrix4> m_additiveBaseTransforms;
         int m_nextLayerId;
 
+        // Root Motion
+        bool m_rootMotionEnabled;
+        RootMotionData m_rootMotion;
+        Vector3 m_rootMotionScale;
+        Vector3 m_previousRootPosition;
+        Quaternion m_previousRootRotation;
+
+        // Animation Events
+        AnimationEventCallback m_eventCallback;
+        std::vector<FiredEvent> m_firedEvents;
+
+        // IK System
+        std::vector<IKChain> m_ikChains;
+        std::vector<int> m_ikChainOrder;
+        bool m_ikEnabled;
+
+        // State Machine
+        AnimationStateMachine* m_stateMachine;
+
         float m_currentTime;
         float m_speed;
         bool m_playing;
         bool m_paused;
         bool m_loop;
 
+        struct BoneTransform
+        {
+            Vector3 translation;
+            Quaternion rotation;
+            Vector3 scale;
+            bool hasTranslation = false;
+            bool hasRotation = false;
+            bool hasScale = false;
+        };
+
         int GetLayerIndex(int layerId) const;
         void UpdateLayers(float deltaTime, std::vector<std::shared_ptr<Mesh>>& meshes);
         void UpdateCrossfade(float deltaTime);
         void UpdateBlendTree(float deltaTime);
+        void SampleAnimationToBoneTransforms(AnimationClip* clip, float time, std::vector<BoneTransform>& transforms);
+        void BlendBoneTransformsToMatrices(const std::vector<BoneTransform>& from, const std::vector<BoneTransform>& to, float weight, std::vector<Matrix4>& result);
         void BlendBoneTransforms(const std::vector<Matrix4>& from, const std::vector<Matrix4>& to, float weight, std::vector<Matrix4>& result, int layerId = -1);
         void ApplyAdditiveAnimation(const std::vector<Matrix4>& additive, std::vector<Matrix4>& result);
         void SampleAnimationToBuffer(AnimationClip* clip, float time, std::vector<Matrix4>& buffer);
         void EvaluateBlendTree(BlendTreeNode* node, float time, std::vector<Matrix4>& result);
         Matrix4 BlendMatrices(const Matrix4& a, const Matrix4& b, float t);
+
+        // Root motion, IK, and events
+        void UpdateRootMotion(AnimationClip* clip, float deltaTime);
+        void ProcessAnimationEvents(AnimationClip* clip, float prevTime, float currentTime);
+        Quaternion ApplyJointConstraint(const Quaternion& rotation, const JointConstraint& constraint);
+        void SortIKChainsByDependency();
+        bool HasIKChainDependency(int chainA, int chainB) const;
+        void ApplyIK();
+        void SolveTwoBoneIK(IKChain& chain);
+        void SolveLookAtIK(IKChain& chain);
+        void SolveFABRIK(IKChain& chain);
+        void SolveCCDIK(IKChain& chain);
+        Vector3 GetBoneWorldPosition(int boneIndex) const;
+        void SetBoneWorldPosition(int boneIndex, const Vector3& position);
 
         void CalculateBoneTransforms();
         void SampleAnimation(float time);

@@ -88,6 +88,29 @@ namespace cl
 
         void UpdateAnimation(float deltaTime);
 
+        // Root Motion
+        void SetRootMotionEnabled(bool enabled);
+        bool IsRootMotionEnabled() const;
+        Vector3 GetRootMotionDelta() const;
+        Quaternion GetRootMotionRotationDelta() const;
+        void ApplyRootMotion();  // Apply root motion to model transform
+
+        // Animation Events
+        void SetAnimationEventCallback(AnimationEventCallback callback);
+
+        // IK
+        int AddIKChain(IKSolverType type, const std::vector<std::string>& boneNames);
+        void SetIKTarget(int chainIndex, const Vector3& position, const Quaternion& rotation);
+        void SetIKWeight(int chainIndex, float weight);
+
+        // State Machine
+        AnimationStateMachine* CreateStateMachine();
+        AnimationStateMachine* GetStateMachine() const;
+        void SetStateMachineParameter(const std::string& name, float value);
+        void SetStateMachineParameter(const std::string& name, bool value);
+        void SetStateMachineState(const std::string& stateName);
+        void SetStateMachineState(int stateId);
+
         /// This sets every mesh within this model to skinned
         void SetSkinned(bool skinned);
 

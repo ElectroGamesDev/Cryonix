@@ -473,6 +473,120 @@ namespace cl
         m_animator.Update(deltaTime, m_meshes);
     }
 
+    void Model::SetRootMotionEnabled(bool enabled)
+    {
+        m_animator.SetRootMotionEnabled(enabled);
+    }
+
+    bool Model::IsRootMotionEnabled() const
+    {
+        return m_animator.IsRootMotionEnabled();
+    }
+
+    Vector3 Model::GetRootMotionDelta() const
+    {
+        return m_animator.GetRootMotion().deltaPosition;
+    }
+
+    Quaternion Model::GetRootMotionRotationDelta() const
+    {
+        return m_animator.GetRootMotion().deltaRotation;
+    }
+
+    void Model::ApplyRootMotion()
+    {
+        const RootMotionData& rootMotion = m_animator.GetRootMotion();
+
+        // Apply position delta
+        if (rootMotion.extractPosition)
+        {
+            Vector3 rotatedDelta = m_rotationQuat * rootMotion.deltaPosition;
+            m_position = m_position + rotatedDelta;
+        }
+
+        // Apply rotation delta
+        if (rootMotion.extractRotation)
+            m_rotationQuat = m_rotationQuat * rootMotion.deltaRotation;
+
+        MarkTransformDirty();
+        m_animator.ClearRootMotion();
+    }
+
+    void Model::SetAnimationEventCallback(AnimationEventCallback callback)
+    {
+        m_animator.SetEventCallback(callback);
+    }
+
+    int Model::AddIKChain(IKSolverType type, const std::vector<std::string>& boneNames)
+    {
+        if (!m_skeleton)
+            return -1;
+
+        std::vector<int> boneIndices;
+        for (const auto& name : boneNames)
+        {
+            int index = m_skeleton->FindBoneIndex(name);
+            if (index >= 0)
+                boneIndices.push_back(index);
+        }
+
+        if (boneIndices.empty())
+            return -1;
+
+        return m_animator.AddIKChain(type, boneIndices);
+    }
+
+    void Model::SetIKTarget(int chainIndex, const Vector3& position, const Quaternion& rotation)
+    {
+        m_animator.SetIKTarget(chainIndex, position, rotation);
+    }
+
+    void Model::SetIKWeight(int chainIndex, float weight)
+    {
+        m_animator.SetIKWeight(chainIndex, weight);
+    }
+
+    AnimationStateMachine* Model::CreateStateMachine()
+    {
+        AnimationStateMachine* sm = new AnimationStateMachine();
+        m_animator.SetStateMachine(sm);
+        return sm;
+    }
+
+    AnimationStateMachine* Model::GetStateMachine() const
+    {
+        return m_animator.GetStateMachine();
+    }
+
+    void Model::SetStateMachineParameter(const std::string& name, float value)
+    {
+        if (m_animator.GetStateMachine())
+            m_animator.GetStateMachine()->SetParameter(name, value);
+    }
+
+    void Model::SetStateMachineParameter(const std::string& name, bool value)
+    {
+        if (m_animator.GetStateMachine())
+            m_animator.GetStateMachine()->SetParameter(name, value);
+    }
+
+    void Model::SetStateMachineState(const std::string& stateName)
+    {
+        AnimationStateMachine* sm = m_animator.GetStateMachine();
+        if (sm)
+        {
+            AnimationState* state = sm->GetState(stateName);
+            if (state)
+                sm->SetCurrentState(state->id);
+        }
+    }
+
+    void Model::SetStateMachineState(int stateId)
+    {
+        if (m_animator.GetStateMachine())
+            m_animator.GetStateMachine()->SetCurrentState(stateId);
+    }
+
     void Model::SetSkinned(bool skinned)
     {
         for (auto mesh : m_meshes)

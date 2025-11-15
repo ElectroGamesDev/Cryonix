@@ -291,52 +291,52 @@ namespace cl
         return qY * qX * qZ;
     }
 
+    // In your Maths.h/cpp - Quaternion::Slerp should look like this:
     Quaternion Quaternion::Slerp(const Quaternion& a, const Quaternion& b, float t)
     {
         Quaternion result;
 
-        float cosHalfTheta = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+        // Compute dot product
+        float dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 
-        Quaternion b_adjusted = b;
-        if (cosHalfTheta < 0.0f)
+        Quaternion b_corrected = b;
+        if (dot < 0.0f)
         {
-            b_adjusted.x = -b.x;
-            b_adjusted.y = -b.y;
-            b_adjusted.z = -b.z;
-            b_adjusted.w = -b.w;
-            cosHalfTheta = -cosHalfTheta;
+            b_corrected.x = -b.x;
+            b_corrected.y = -b.y;
+            b_corrected.z = -b.z;
+            b_corrected.w = -b.w;
+            dot = -dot;
         }
 
-        if (cosHalfTheta > 0.9995f)
+        // Clamp dot
+        dot = std::max(-1.0f, std::min(1.0f, dot));
+
+        const float DOT_THRESHOLD = 0.9995f;
+
+        if (dot > DOT_THRESHOLD)
         {
-            result.x = a.x + (b_adjusted.x - a.x) * t;
-            result.y = a.y + (b_adjusted.y - a.y) * t;
-            result.z = a.z + (b_adjusted.z - a.z) * t;
-            result.w = a.w + (b_adjusted.w - a.w) * t;
+            // If quaternions are very close, use linear interpolation
+            result.x = a.x + t * (b_corrected.x - a.x);
+            result.y = a.y + t * (b_corrected.y - a.y);
+            result.z = a.z + t * (b_corrected.z - a.z);
+            result.w = a.w + t * (b_corrected.w - a.w);
             return result.Normalize();
         }
 
-        float halfTheta = acosf(cosHalfTheta);
-        float sinHalfTheta = sqrtf(1.0f - cosHalfTheta * cosHalfTheta);
+        // Standard slerp
+        float theta = std::acos(dot);
+        float sinTheta = std::sin(theta);
 
-        if (fabsf(sinHalfTheta) < 0.001f)
-        {
-            result.x = (a.x + b_adjusted.x) * 0.5f;
-            result.y = (a.y + b_adjusted.y) * 0.5f;
-            result.z = (a.z + b_adjusted.z) * 0.5f;
-            result.w = (a.w + b_adjusted.w) * 0.5f;
-            return result;
-        }
+        float wa = std::sin((1.0f - t) * theta) / sinTheta;
+        float wb = std::sin(t * theta) / sinTheta;
 
-        float ratioA = sinf((1.0f - t) * halfTheta) / sinHalfTheta;
-        float ratioB = sinf(t * halfTheta) / sinHalfTheta;
+        result.x = wa * a.x + wb * b_corrected.x;
+        result.y = wa * a.y + wb * b_corrected.y;
+        result.z = wa * a.z + wb * b_corrected.z;
+        result.w = wa * a.w + wb * b_corrected.w;
 
-        result.x = a.x * ratioA + b_adjusted.x * ratioB;
-        result.y = a.y * ratioA + b_adjusted.y * ratioB;
-        result.z = a.z * ratioA + b_adjusted.z * ratioB;
-        result.w = a.w * ratioA + b_adjusted.w * ratioB;
-
-        return result;
+        return result.Normalize();
     }
 
     Vector3 Quaternion::ToEuler() const
@@ -397,6 +397,31 @@ namespace cl
         return result;
     }
 
+    Quaternion Quaternion::FromToRotation(const Vector3& fromDir, const Vector3& toDir)
+    {
+        Vector3 fromNorm = fromDir.Normalize();
+        Vector3 toNorm = toDir.Normalize();
+
+        float cosTheta = Vector3::Dot(fromNorm, toNorm);
+        Vector3 rotationAxis = Vector3::Cross(fromNorm, toNorm);
+
+        if (cosTheta >= 1.0f - 1e-6f)
+            return Quaternion(0, 0, 0, 1);
+
+        if (cosTheta <= -1.0f + 1e-6f)
+        {
+            Vector3 axis = Vector3::Cross({ 1, 0, 0 }, fromNorm);
+            if (axis.Length() < 1e-6f)
+                axis = Vector3::Cross({0, 1, 0}, fromNorm);
+            axis = axis.Normalize();
+            return Quaternion::FromAxisAngle(axis, 180.0f);
+        }
+
+        float angle = acosf(cosTheta) * 180.0f / PI;
+        return Quaternion::FromAxisAngle(rotationAxis.Normalize(), angle);
+    }
+
+
     Quaternion Quaternion::FromMatrix(const Matrix4& m)
     {
         Quaternion q;
@@ -443,6 +468,16 @@ namespace cl
         float lenSq = x * x + y * y + z * z + w * w;
         float invLenSq = 1.0f / fmaxf(lenSq, 1e-6f);
         return Quaternion(-x * invLenSq, -y * invLenSq, -z * invLenSq, w * invLenSq);
+    }
+
+    Vector3 operator*(const Quaternion& q, const Vector3& v)
+    {
+        Vector3 qVec(q.x, q.y, q.z);
+
+        Vector3 t = 2.0f * Vector3::Cross(qVec, v);
+        Vector3 result = v + q.w * t + Vector3::Cross(qVec, t);
+
+        return result;
     }
 
 
