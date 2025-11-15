@@ -338,7 +338,7 @@ namespace cl
                     useNodeAnimation = true;
             }
             else
-                bones = &animator->GetFinalBoneMatrices();
+                bones = &animator->GetFinalBoneMatrices(); // Even if it doesn't have a clip, an animation layer may have a clip playing
         }
         else if (animator && model->HasSkeleton())
             bones = &animator->GetFinalBoneMatrices();
@@ -503,7 +503,7 @@ namespace cl
                     skipInstancing = true;
             }
             else
-                bones = &animator->GetFinalBoneMatrices();
+                bones = &animator->GetFinalBoneMatrices(); // Even if it doesn't have a clip, an animation layer may have a clip playing
         }
         else if (animator && model->HasSkeleton())
             bones = &animator->GetFinalBoneMatrices();
