@@ -1,9 +1,9 @@
-# Crylib
+# Cryonix
 
-**Crylib** is a lightweight and modern **C++ game and graphics library** built for **simplicity, speed, and modularity**.  
+**Cryonix** is a lightweight and modern **C++ game and graphics library** built for **simplicity, speed, and modularity**.  
 It’s designed for both **game development** and **general-purpose rendering or software**, offering a flexible and efficient framework for building real-time applications with ease.
 
-Crylib provides a unified API for rendering, animation, audio, and input, while maintaining a minimal setup and fast runtime performance.
+Cryonix provides a unified API for rendering, animation, audio, and input, while maintaining a minimal setup and fast runtime performance.
 
 ---
 
@@ -89,6 +89,6 @@ The [`/examples`](./examples) directory contains practical examples demonstratin
 
 ## License
 
-Crylib is licensed under the [MIT License](./LICENSE).
+Cryonix is licensed under the [MIT License](./LICENSE).
 
-Crylib uses several third-party libraries. See the [THIRD_PARTY_LICENSES](./THIRD_PARTY_LICENSES) file for license information.
+Cryonix uses several third-party libraries. See the [THIRD_PARTY_LICENSES](./THIRD_PARTY_LICENSES) file for license information.

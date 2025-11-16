@@ -22,7 +22,7 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{eb63ead7-01f3-4977-bdef-d6b81d99d156}</ProjectGuid>
-    <RootNamespace>Crylib</RootNamespace>
+    <RootNamespace>Cryonix</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -160,7 +160,7 @@
     <ClInclude Include="include\Camera.h" />
     <ClInclude Include="include\Camera2D.h" />
     <ClInclude Include="include\Config.h" />
-    <ClInclude Include="include\Crylib.h" />
+    <ClInclude Include="include\Cryonix.h" />
     <ClInclude Include="include\Input.h" />
     <ClInclude Include="include\loaders\FBXLoader.h" />
     <ClInclude Include="include\loaders\GLTFLoader.h" />
@@ -193,7 +193,7 @@
     <ClCompile Include="src\Audio.cpp" />
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\Camera2D.cpp" />
-    <ClCompile Include="src\Crylib.cpp" />
+    <ClCompile Include="src\Cryonix.cpp" />
     <ClCompile Include="src\Input.cpp" />
     <ClCompile Include="src\loaders\FBXLoader.cpp" />
     <ClCompile Include="src\loaders\GLTFLoader.cpp" />

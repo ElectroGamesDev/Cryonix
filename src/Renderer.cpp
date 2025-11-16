@@ -9,7 +9,7 @@
 #endif
 #include <iostream>
 
-namespace cl
+namespace cx
 {
     static bgfx::UniformHandle u_BoneMatrices = BGFX_INVALID_HANDLE;
     static bgfx::UniformHandle u_IsSkinned = BGFX_INVALID_HANDLE;
@@ -401,6 +401,7 @@ namespace cl
 
     void DrawMeshInstanced(Mesh* mesh, const std::vector<Matrix4>& transforms, const std::vector<Matrix4>* boneMatrices)
     {
+        // Todo: This isnt instanced
         if (!mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader() || transforms.empty())
             return;
 
@@ -513,6 +514,7 @@ namespace cl
             DrawModel(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
             return;
         }
+
         for (const auto& mesh : model->GetMeshes())
         {
             if (!mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())

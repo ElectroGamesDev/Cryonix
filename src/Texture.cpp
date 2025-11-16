@@ -12,7 +12,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
-namespace cl
+namespace cx
 {
     std::vector<Texture*> Texture::s_textures;
     std::vector<Texture::ReadbackRequest> Texture::s_pendingReadbacks;

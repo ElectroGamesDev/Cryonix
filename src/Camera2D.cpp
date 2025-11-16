@@ -2,7 +2,7 @@
 #include "Camera2D.h"
 #include "Renderer.h"
 
-namespace cl
+namespace cx
 {
     Camera2D::Camera2D()
         : m_position(0.0f, 0.0f)

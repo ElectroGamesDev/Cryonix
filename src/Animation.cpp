@@ -4,7 +4,7 @@
 #include <functional>
 #include <map>
 
-namespace cl
+namespace cx
 {
     std::vector<AnimationClip*> AnimationClip::s_clips;
 

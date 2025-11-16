@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-namespace cl
+namespace cx
 {
     Model* LoadModel(std::string_view filePath, bool mergeMeshes = true);
     Model* CloneModel(const Model* model);

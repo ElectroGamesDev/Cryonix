@@ -10,7 +10,7 @@
 #include <glfw3native.h>
 #endif
 
-namespace cl
+namespace cx
 {
     Window* Window::Create()
     {

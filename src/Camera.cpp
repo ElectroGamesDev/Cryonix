@@ -1,7 +1,7 @@
 #include "Camera.h"
 #include "Renderer.h"
 
-namespace cl
+namespace cx
 {
     uint16_t Camera::s_lastId = 0;
 

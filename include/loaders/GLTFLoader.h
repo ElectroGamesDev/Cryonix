@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-namespace cl
+namespace cx
 {
     Model* LoadGLTF(std::string_view filePath, bool mergeMeshes = true, int sceneIndex = -1);
 

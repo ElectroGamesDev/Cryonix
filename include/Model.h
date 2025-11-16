@@ -7,7 +7,7 @@
 #include <string>
 #include <memory>
 
-namespace cl
+namespace cx
 {
     class Model
     {

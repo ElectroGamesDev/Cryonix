@@ -4,7 +4,7 @@
 #include <bgfx.h>
 #include "Material.h"
 
-namespace cl
+namespace cx
 {
     struct Vertex
     {

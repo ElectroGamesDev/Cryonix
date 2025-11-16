@@ -1,4 +1,4 @@
-#include "Crylib.h"
+#include "Cryonix.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio/include/miniaudio.h"
@@ -7,9 +7,9 @@
 #include <iostream>
 #include "basis universal/basisu_transcoder.h"
 
-namespace cl
+namespace cx
 {
-    struct CrylibState
+    struct CryonixState
     {
         Window* window;
         Config config;
@@ -31,7 +31,7 @@ namespace cl
         int lastWidth;
         int lastHeight;
 
-        CrylibState()
+        CryonixState()
             : window(nullptr)
             , initialized(false)
             , deltaTime(0.0f)
@@ -50,46 +50,46 @@ namespace cl
         }
     };
 
-    static CrylibState* s_crylib = nullptr;
+    static CryonixState* s_cryonix = nullptr;
 
     bool Init(const Config& config)
     {
-        if (s_crylib)
+        if (s_cryonix)
             return false;
 
-        s_crylib = new CrylibState();
-        s_crylib->config = config;
-        s_crylib->initialized = false;
+        s_cryonix = new CryonixState();
+        s_cryonix->config = config;
+        s_cryonix->initialized = false;
 
         // Create platform window
-        s_crylib->window = Window::Create();
-        if (!s_crylib->window)
+        s_cryonix->window = Window::Create();
+        if (!s_cryonix->window)
         {
-            delete s_crylib;
-            s_crylib = nullptr;
+            delete s_cryonix;
+            s_cryonix = nullptr;
 
             return false;
         }
 
         // Initialize window
-        if (!s_crylib->window->Init(config))
+        if (!s_cryonix->window->Init(config))
         {
-            delete s_crylib->window;
-            delete s_crylib;
-            s_crylib = nullptr;
+            delete s_cryonix->window;
+            delete s_cryonix;
+            s_cryonix = nullptr;
 
             return false;
         }
 
         // Store initial window size
-        s_crylib->window->GetWindowSize(s_crylib->lastWidth, s_crylib->lastHeight);
+        s_cryonix->window->GetWindowSize(s_cryonix->lastWidth, s_cryonix->lastHeight);
 
         // Initialize input system
         Input::Init();
 
         // Initialize the audio system
         if (config.audioEnabled)
-            cl::InitAudioDevice();
+            cx::InitAudioDevice();
 
         // Set random seed
         RandomizeSeed();
@@ -101,25 +101,25 @@ namespace cl
         //InitPrimitives(); // The default shader isn't created yet
 
         // Initialize renderer
-        if (!InitRenderer(s_crylib->window, config))
+        if (!InitRenderer(s_cryonix->window, config))
         {
             Input::Shutdown();
             ShutdownAudioDevice();
-            s_crylib->window->Shutdown();
-            delete s_crylib->window;
-            delete s_crylib;
-            s_crylib = nullptr;
+            s_cryonix->window->Shutdown();
+            delete s_cryonix->window;
+            delete s_cryonix;
+            s_cryonix = nullptr;
 
             return false;
         }
 
-        s_crylib->initialized = true;
+        s_cryonix->initialized = true;
         return true;
     }
 
     void Update()
     {
-        if (!s_crylib || !s_crylib->initialized)
+        if (!s_cryonix || !s_cryonix->initialized)
             return;
 
         static auto lastTime = std::chrono::steady_clock::now();
@@ -127,9 +127,9 @@ namespace cl
         float delta = std::chrono::duration<float>(now - lastTime).count();
 
         // Frame rate limiting
-        if (s_crylib->targetFPS > 0)
+        if (s_cryonix->targetFPS > 0)
         {
-            float targetFrameTime = 1.0f / s_crylib->targetFPS;
+            float targetFrameTime = 1.0f / s_cryonix->targetFPS;
             float sleepThreshold = 0.002f;
 
             while (delta < targetFrameTime)
@@ -159,41 +159,41 @@ namespace cl
 
         // Clamp delta to prevent spikes
         constexpr float MAX_DELTA = 0.1f;
-        s_crylib->deltaTime = std::min(delta, MAX_DELTA);
+        s_cryonix->deltaTime = std::min(delta, MAX_DELTA);
 
         // Update timing
-        s_crylib->lastFrameTime = lastTime;
-        s_crylib->currentFrameTime = now;
+        s_cryonix->lastFrameTime = lastTime;
+        s_cryonix->currentFrameTime = now;
         lastTime = now;
 
         // FPS Counter
-        s_crylib->frameTimeAccumulator += s_crylib->deltaTime;
-        s_crylib->fpsCounter++;
+        s_cryonix->frameTimeAccumulator += s_cryonix->deltaTime;
+        s_cryonix->fpsCounter++;
 
-        if (s_crylib->frameTimeAccumulator >= 1.0f)
+        if (s_cryonix->frameTimeAccumulator >= 1.0f)
         {
-            s_crylib->currentFPS = s_crylib->fpsCounter;
-            s_crylib->fpsCounter = 0;
-            s_crylib->frameTimeAccumulator = 0.0f;
+            s_cryonix->currentFPS = s_cryonix->fpsCounter;
+            s_cryonix->fpsCounter = 0;
+            s_cryonix->frameTimeAccumulator = 0.0f;
         }
 
-        s_crylib->frameCount++;
+        s_cryonix->frameCount++;
 
         // Window handling
         int currentWidth, currentHeight;
-        s_crylib->window->GetWindowSize(currentWidth, currentHeight);
-        s_crylib->wasResized = (currentWidth != s_crylib->lastWidth || currentHeight != s_crylib->lastHeight);
-        s_crylib->lastWidth = currentWidth;
-        s_crylib->lastHeight = currentHeight;
+        s_cryonix->window->GetWindowSize(currentWidth, currentHeight);
+        s_cryonix->wasResized = (currentWidth != s_cryonix->lastWidth || currentHeight != s_cryonix->lastHeight);
+        s_cryonix->lastWidth = currentWidth;
+        s_cryonix->lastHeight = currentHeight;
 
         // Events and input
-        s_crylib->window->PollEvents();
+        s_cryonix->window->PollEvents();
         Input::Update();
     }
 
     void Shutdown()
     {
-        if (!s_crylib)
+        if (!s_cryonix)
             return;
 
         // Todo: Add an option in config.h to not automatically handle deleting resources like Shaders, Meshes, etc. since this does cause overhead
@@ -237,40 +237,40 @@ namespace cl
         ShutdownRenderer();
         Input::Shutdown();
 
-        if (s_crylib->config.audioEnabled)
-            cl::ShutdownAudioDevice();
+        if (s_cryonix->config.audioEnabled)
+            cx::ShutdownAudioDevice();
 
-        if (s_crylib->window)
+        if (s_cryonix->window)
         {
-            s_crylib->window->Shutdown();
-            delete s_crylib->window;
-            s_crylib->window = nullptr;
+            s_cryonix->window->Shutdown();
+            delete s_cryonix->window;
+            s_cryonix->window = nullptr;
         }
 
-        delete s_crylib;
-        s_crylib = nullptr;
+        delete s_cryonix;
+        s_cryonix = nullptr;
     }
 
     // Window State and Properties
 
     bool ShouldClose()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return true;
 
-        return s_crylib->window->ShouldClose();
+        return s_cryonix->window->ShouldClose();
     }
 
     void SetWindowTitle(std::string_view title)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->SetWindowTitle(title.data());
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->SetWindowTitle(title.data());
     }
 
     void GetWindowSize(int& width, int& height)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->GetWindowSize(width, height);
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->GetWindowSize(width, height);
         else
         {
             width = 0;
@@ -280,103 +280,103 @@ namespace cl
 
     bool IsWindowReady()
     {
-        return s_crylib && s_crylib->window && s_crylib->initialized;
+        return s_cryonix && s_cryonix->window && s_cryonix->initialized;
     }
 
     bool IsWindowFullscreen()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return false;
-        return s_crylib->window->IsFullscreen();
+        return s_cryonix->window->IsFullscreen();
     }
 
     bool IsWindowHidden()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return false;
-        return s_crylib->window->IsHidden();
+        return s_cryonix->window->IsHidden();
     }
 
     bool IsWindowMinimized()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return false;
-        return s_crylib->window->IsMinimized();
+        return s_cryonix->window->IsMinimized();
     }
 
     bool IsWindowMaximized()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return false;
-        return s_crylib->window->IsMaximized();
+        return s_cryonix->window->IsMaximized();
     }
 
     bool IsWindowFocused()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return false;
-        return s_crylib->window->IsFocused();
+        return s_cryonix->window->IsFocused();
     }
 
     bool IsWindowResized()
     {
-        return s_crylib ? s_crylib->wasResized : false;
+        return s_cryonix ? s_cryonix->wasResized : false;
     }
 
     void ToggleFullscreen()
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->ToggleFullscreen();
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->ToggleFullscreen();
     }
 
     void MaximizeWindow()
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->Maximize();
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->Maximize();
     }
 
     void MinimizeWindow()
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->Minimize();
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->Minimize();
     }
 
     void RestoreWindow()
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->Restore();
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->Restore();
     }
 
     void SetWindowOpacity(float opacity)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->SetOpacity(opacity);
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->SetOpacity(opacity);
     }
 
     void SetWindowIcon(std::string_view iconPath)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->SetIcon(iconPath.data());
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->SetIcon(iconPath.data());
     }
 
     int GetMonitorCount()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return 0;
-        return s_crylib->window->GetMonitorCount();
+        return s_cryonix->window->GetMonitorCount();
     }
 
     int GetCurrentMonitor()
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return 0;
-        return s_crylib->window->GetCurrentMonitor();
+        return s_cryonix->window->GetCurrentMonitor();
     }
 
     void GetMonitorSize(int monitor, int& width, int& height)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->GetMonitorSize(monitor, width, height);
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->GetMonitorSize(monitor, width, height);
         else
         {
             width = 0;
@@ -386,15 +386,15 @@ namespace cl
 
     int GetMonitorRefreshRate(int monitor)
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return 0;
-        return s_crylib->window->GetMonitorRefreshRate(monitor);
+        return s_cryonix->window->GetMonitorRefreshRate(monitor);
     }
 
     void GetMonitorPosition(int monitor, int& x, int& y)
     {
-        if (s_crylib && s_crylib->window)
-            s_crylib->window->GetMonitorPosition(monitor, x, y);
+        if (s_cryonix && s_cryonix->window)
+            s_cryonix->window->GetMonitorPosition(monitor, x, y);
         else
         {
             x = 0;
@@ -404,16 +404,16 @@ namespace cl
 
     std::string GetMonitorName(int monitor)
     {
-        if (!s_crylib || !s_crylib->window)
+        if (!s_cryonix || !s_cryonix->window)
             return "Unknown";
 
-        return s_crylib->window->GetMonitorName(monitor);
+        return s_cryonix->window->GetMonitorName(monitor);
     }
 
     // Time and FPS
     float GetFrameTime()
     {
-        return s_crylib ? s_crylib->deltaTime : 0.0f;
+        return s_cryonix ? s_cryonix->deltaTime : 0.0f;
     }
 
     float GetDeltaTime()
@@ -423,30 +423,30 @@ namespace cl
 
     double GetTime()
     {
-        if (!s_crylib)
+        if (!s_cryonix)
             return 0.0;
 
         auto now = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsed = now - s_crylib->startTime;
+        std::chrono::duration<double> elapsed = now - s_cryonix->startTime;
         return elapsed.count();
     }
 
     int GetFrameCount()
     {
-        return s_crylib ? s_crylib->frameCount : 0;
+        return s_cryonix ? s_cryonix->frameCount : 0;
     }
 
     void SetTargetFPS(int fps)
     {
-        if (s_crylib)
-            s_crylib->targetFPS = fps;
+        if (s_cryonix)
+            s_cryonix->targetFPS = fps;
         else
             std::cout << "[WARNING] SetTargetFrame() must be called after Init()" << std::endl;
     }
 
     int GetFPS()
     {
-        return s_crylib ? s_crylib->currentFPS : 0;
+        return s_cryonix ? s_cryonix->currentFPS : 0;
     }
 
     // System Info
@@ -477,12 +477,12 @@ namespace cl
     // Misc
     Window* GetWindow()
     {
-        return s_crylib ? s_crylib->window : nullptr;
+        return s_cryonix ? s_cryonix->window : nullptr;
     }
 
     const Config& GetConfig()
     {
         static Config emptyConfig;
-        return s_crylib ? s_crylib->config : emptyConfig;
+        return s_cryonix ? s_cryonix->config : emptyConfig;
     }
 }

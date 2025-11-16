@@ -9,7 +9,7 @@
 #include <functional>
 #include <complex>
 
-namespace cl
+namespace cx
 {
     // Forward declarations
     struct Sound;

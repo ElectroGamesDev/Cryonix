@@ -8,7 +8,7 @@
 #include <bgfx.h>
 #include <chrono>
 
-namespace cl
+namespace cx
 {
     enum class BlendMode
     {

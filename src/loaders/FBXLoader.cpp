@@ -9,7 +9,7 @@
 #include "ufbx/ufbx.h"
 #include <set>
 
-namespace cl
+namespace cx
 {
     ufbx_anim_prop* FindPropInAnim(ufbx_anim* anim, const ufbx_element* element, const char* prop)
     {

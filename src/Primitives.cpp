@@ -2,7 +2,7 @@
 #include "Shader.h"
 #include <cmath>
 
-namespace cl
+namespace cx
 {
     static Material m_primitiveMaterial;
 

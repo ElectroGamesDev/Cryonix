@@ -4,7 +4,7 @@
 #include <cstring>
 #include <cstdint>
 
-namespace cl
+namespace cx
 {
     const float PI = 3.14159265359f;
 
@@ -41,6 +41,15 @@ namespace cl
 
         float Length() const { return std::sqrt(x * x + y * y + z * z); }
         Vector3 Normalize() const { float len = Length(); return len > 0 ? *this / len : Vector3(); }
+
+        static Vector3 Lerp(const Vector3& a, const Vector3& b, float t)
+        {
+            return Vector3(
+                a.x + (b.x - a.x) * t,
+                a.y + (b.y - a.y) * t,
+                a.z + (b.z - a.z) * t
+            );
+        }
 
         static Vector3 Cross(const Vector3& a, const Vector3& b)
         {

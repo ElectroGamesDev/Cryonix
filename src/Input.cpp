@@ -1,7 +1,7 @@
 #include "Input.h"
 #include <unordered_map>
 
-namespace cl
+namespace cx
 {
     struct InputState
     {

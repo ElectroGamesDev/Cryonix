@@ -19,7 +19,7 @@
 #include <limits>
 #include <execution>
 
-namespace cl
+namespace cx
 {
     struct VertexKey
     {

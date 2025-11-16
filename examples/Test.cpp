@@ -1,57 +1,63 @@
-#include "Crylib.h"
+#include "Cryonix.h"
 #include <iostream>
 
 int main()
 {
-    cl::Config config;
-    config.windowTitle = "Crylib Test Window";
+    cx::Config config;
+    config.windowTitle = "Cryonix Test Window";
     config.windowWidth = 1280;
     config.windowHeight = 720;
-    config.renderingAPI = cl::DirectX12;
+    config.renderingAPI = cx::DirectX12;
 
-    if (!cl::Init(config))
+    if (!cx::Init(config))
     {
-        std::cerr << "Failed to initialize Crylib!" << std::endl;
+        std::cerr << "Failed to initialize Cryonix!" << std::endl;
         return -1;
     }
 
-    cl::LoadDefaultShader("shaders/vs_default.bin", "shaders/fs_default.bin");
+    cx::LoadDefaultShader("shaders/vs_default.bin", "shaders/fs_default.bin");
 
-    //cl::Model* model = cl::LoadModel("models/truck/binary/CesiumMilkTruck.glb");
-    cl::Model* model = cl::LoadModel("models/gltf/Tree.glb");
-    //cl::Model* model = cl::LoadModel("models/Tree.glb"); // Todo: This isnt loading/rendering properly
-    //cl::Model* model = cl::LoadModel("models/Tree3.fbx");
-    //cl::Model* model = cl::LoadModel("models/Animated Character/Character_anim.fbx");
-    //cl::Model* model = cl::LoadModel("models/gltf/Sponza/source/scene.glb");
-    //cl::Model* model = cl::LoadModel("models/OBJ/sibenik/sibenik.obj");
+    //cx::Model* model = cx::LoadModel("models/truck/binary/CesiumMilkTruck.glb");
+    //cx::Model* model = cx::LoadModel("models/gltf/Tree.glb");
+    //cx::Model* model = cx::LoadModel("models/Tree.glb"); // Todo: This isnt loading/rendering properly
+    //cx::Model* model = cx::LoadModel("models/Tree3.fbx");
+    //cx::Model* model = cx::LoadModel("models/Animated Character/Character_anim.fbx");
+    //cx::Model* model = cx::LoadModel("models/gltf/Sponza/source/scene.glb");
+    //cx::Model* model = cx::LoadModel("models/OBJ/sibenik/sibenik.obj");
+    cx::Model* model = cx::LoadModel("models/Animation/Character.glb");
 
     // Primitives
-    cl::InitPrimitives();
+    cx::InitPrimitives();
 
-    cl::Model primitive = cl::GenQuadModel();
+    cx::Model primitive = cx::GenQuadModel();
 
     // Camera
-    cl::Camera camera(
+    cx::Camera camera(
         { 0, 0, -10 }, // Position
         { 0, 0, 0 }, // Rotation
         { 0, 1, 0}, // Up
         false); // Use Target
 
     // Animations
-    //model->PlayAnimationByIndex(1);
-    //cl::Model* model = cl::LoadModel("models/gltf/AnimatedCube/AnimatedCube.gltf");
-    //cl::Model* model = cl::LoadModel("models/gltf/AnimatedTriangle/AnimatedTriangle.gltf"); // Todo: Not working
-    //cl::Model* model = cl::LoadModel("models/Animated Character/Character_anim.fbx"); // Todo: not working
+    //model->PlayAnimationByIndex(1, true);
+    //cx::Model* model = cx::LoadModel("models/gltf/AnimatedCube/AnimatedCube.gltf");
+    //cx::Model* model = cx::LoadModel("models/gltf/AnimatedTriangle/AnimatedTriangle.gltf"); // Todo: Not working
+    //cx::Model* model = cx::LoadModel("models/Animated Character/Character_anim.fbx"); // Todo: not working
     //model->PlayAnimationByName("animation_AnimatedCube", true);
 
-    //model->SetPosition({0,-0.5f,0});
-    model->SetRotation({ 0, 0, 90 });
-    //model->SetScale({3,3,3});
+    // Animation with layers
+    int walkLayer = model->GetAnimator()->CreateLayer("Walk", 0);
+    model->GetAnimator()->PlayAnimationOnLayer(walkLayer, model->GetAnimation(1), true);
+
+    //model->SetPosition({0,1,0});
+    //model->SetRotation({ 0, 90, 0 });
+    model->SetRotation({ 90, 180, 0 });
+    model->SetScale({0.01f, 0.01f, 0.01f});
 
     //for (const auto& mesh : model->GetMeshes())
     //{
     //    if (mesh->GetMaterial())
-    //        mesh->GetMaterial()->SetShader(cl::GetDefaultShader());
+    //        mesh->GetMaterial()->SetShader(cx::GetDefaultShader());
     //}
 
     //player.SetMaterial(0, bodyMaterial);
@@ -61,14 +67,14 @@ int main()
     //player.SetRotation(0.0f, 45.0f, 0.0f);
     //player.SetScale(1.5f);
 
-    //cl::Model* clonedModel = cl::CloneModel(model);
+    //cx::Model* clonedModel = cx::CloneModel(model);
 
 
     // Lighting:
     
     // Lighting can currently be set like this:
     //float lightingControl[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x=1.0 enables lighting
-    //cl::GetDefaultShader()->SetUniform("u_LightingControl", lightingControl);
+    //cx::GetDefaultShader()->SetUniform("u_LightingControl", lightingControl);
 
     //// Setup lighting uniforms
     //float lightDir[3] = { -0.5f, -1.0f, -0.3f };
@@ -91,20 +97,20 @@ int main()
 
     // Todo: Need to make Sounds, Music, and AudioStream return a pointer. Sounds work fine with a copy, but Music doesn't. Not too sure about AudioStream. Pointers are needed to cleanup automatically anyways
     // Sounds
-    //cl::Sound shot = cl::LoadSound("sounds/test.mp3");
-    //cl::PlaySound(shot);
+    //cx::Sound shot = cx::LoadSound("sounds/test.mp3");
+    //cx::PlaySound(shot);
 
     // Load and play music
-    //cl::Music music = cl::LoadMusicStream("sounds/test.mp3");
-    //cl::SetMusicLooping(music, true);
-    //cl::PlayMusicStream(music);
+    //cx::Music music = cx::LoadMusicStream("sounds/test.mp3");
+    //cx::SetMusicLooping(music, true);
+    //cx::PlayMusicStream(music);
 
     // 3D Audio
-    //cl::SetSoundPosition(shot, 10.0f, 0.0f, 5.0f);
-    //cl::SetAudioListenerPosition(0.0f, 0.0f, 0.0f);
+    //cx::SetSoundPosition(shot, 10.0f, 0.0f, 5.0f);
+    //cx::SetAudioListenerPosition(0.0f, 0.0f, 0.0f);
 
     // Effects
-    //cl::SetMusicEffect(music, cl::AUDIO_EFFECT_LOWPASS, 500.0f);
+    //cx::SetMusicEffect(music, cx::AUDIO_EFFECT_LOWPASS, 500.0f);
 
     // Old Camera setup
     //float view[16];  // View matrix
@@ -118,47 +124,47 @@ int main()
     //bx::mtxLookAt(view, cameraPos, target, up);
     //bx::mtxProj(proj, 60.0f, float(config.windowWidth) / config.windowHeight, 0.1f, 1000.0f, bgfx::getCaps()->homogeneousDepth);
 
-    // Create uniform handles for camera matrices (assuming Crylib exposes this)
+    // Create uniform handles for camera matrices (assuming Cryonix exposes this)
     //static bgfx::UniformHandle u_View = bgfx::createUniform("u_View", bgfx::UniformType::Mat4);
     //static bgfx::UniformHandle u_Proj = bgfx::createUniform("u_Proj", bgfx::UniformType::Mat4);
     //static bgfx::UniformHandle u_CamPos = bgfx::createUniform("u_CameraPos", bgfx::UniformType::Vec4);
 
-    cl::Clear(cl::Color(48, 48, 48, 255)); // This sets the background color. It can go anywhere after cl:Init() and can be used after camera.Begin() to let multiple cameras have different backgrounds
+    cx::Clear(cx::Color(48, 48, 48, 255)); // This sets the background color. It can go anywhere after cl:Init() and can be used after camera.Begin() to let multiple cameras have different backgrounds
     bgfx::setDebug(BGFX_DEBUG_STATS | BGFX_DEBUG_TEXT);
 
-    while (!cl::ShouldClose())
+    while (!cx::ShouldClose())
     {
-        cl::Update();
-        cl::BeginFrame();
+        cx::Update();
+        cx::BeginFrame();
 
         // Update the camera uniforms
         
         //bgfx::setViewTransform(0, view, proj); // Now being done in Camera
 
         // Movement // Todo: add delta time once it's implemented
-        if (cl::Input::IsKeyDown(cl::KeyCode::W))
-            camera.MoveForward(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::W))
+            camera.MoveForward(5 * cx::GetFrameTime());
 
-        if (cl::Input::IsKeyDown(cl::KeyCode::A))
-            camera.MoveLeft(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::A))
+            camera.MoveLeft(5 * cx::GetFrameTime());
 
-        if (cl::Input::IsKeyDown(cl::KeyCode::S))
-            camera.MoveBackward(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::S))
+            camera.MoveBackward(5 * cx::GetFrameTime());
 
-        if (cl::Input::IsKeyDown(cl::KeyCode::D))
-            camera.MoveRight(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::D))
+            camera.MoveRight(5 * cx::GetFrameTime());
 
-        if (cl::Input::IsKeyDown(cl::KeyCode::E))
-            camera.MoveUp(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::E))
+            camera.MoveUp(5 * cx::GetFrameTime());
 
-        if (cl::Input::IsKeyDown(cl::KeyCode::Q))
-            camera.MoveDown(5 * cl::GetFrameTime());
+        if (cx::Input::IsKeyDown(cx::KeyCode::Q))
+            camera.MoveDown(5 * cx::GetFrameTime());
 
         // Mouse Look
         static float lookSensitivity = 0.1f;
-        cl::Vector3 camRotation = camera.GetRotation();
-        float deltaX = cl::Input::GetMouseDelta().x;
-        float deltaY = cl::Input::GetMouseDelta().y;
+        cx::Vector3 camRotation = camera.GetRotation();
+        float deltaX = cx::Input::GetMouseDelta().x;
+        float deltaY = cx::Input::GetMouseDelta().y;
 
         // Apply mouse deltas
         camRotation.y += deltaX * lookSensitivity;
@@ -172,45 +178,53 @@ int main()
         camera.Rotate(camRotation);
 
         // Rendering
-        camera.Begin();
+        cx::BeginCamera(camera);
 
-        cl::GetDefaultShader()->SetUniform("u_CameraPos", { camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z });
+        cx::GetDefaultShader()->SetUniform("u_CameraPos", { camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z });
+
+        static float elapsed = 0.0f;
+        elapsed += cx::GetFrameTime();
+        if (elapsed > 5.0f)
+        {
+            model->GetAnimator()->CrossfadeToAnimation(model->GetAnimation(0), 1, true, walkLayer);
+            elapsed = -10000;
+        }
 
         // Animations
-        //model->UpdateAnimation(cl::GetFrameTime());
+        model->UpdateAnimation(cx::GetFrameTime());
 
         //model->Rotate(0.0f, deltaTime * 90.0f, 0.0f); // Todo: Add delta time
 
-        //cl::DrawModel(model);
+        cx::DrawModel(model);
 
-        //cl::DrawModel(&primitive);
+        //cx::DrawModel(&primitive);
 
-        //cl::DrawModel(model, { 0,0,0 }, cl::Quaternion{ 0, 0, 0, 1 }, { 1, 1, 1 });
+        //cx::DrawModel(model, { 0,0,0 }, cx::Quaternion{ 0, 0, 0, 1 }, { 1, 1, 1 });
 
 
         // Drawing cloned models example
         
         // Option 1. Using transform parameters
-        //cl::DrawModel(model, { 3,0,0 }, { 0,0,0 }, {1,1,1});
+        //cx::DrawModel(model, { 3,0,0 }, { 0,0,0 }, {1,1,1});
 
         // Option 2. Using model cloned models
-        //cl::DrawModel(clonedModel);
+        //cx::DrawModel(clonedModel);
 
         // Instancing example
-        for (int i = 0; i < 1000; i++)
-            cl::DrawModelInstanced(model, { (float)i,0,0 }, cl::Quaternion{ 0, 0, 0, 1 }, { 1, 1, 1 });
+        //for (int i = 0; i < 1000; i++)
+        //    cx::DrawModelInstanced(model, { (float)i,0,0 }, cx::Quaternion{ 0, 0, 0, 1 }, { 1, 1, 1 });
 
-        cl::SubmitInstances();
+        //cx::SubmitInstances();
 
         // Shaders
 
         // shader.SetUniform() sets the shader's global uniform, across all meshes using this uniform
         // material.SetUniform() sets the shader's uniform just for that material
 
-        cl::EndFrame();
+        cx::EndFrame();
     }
 
-    cl::Shutdown();
+    cx::Shutdown();
 
     return 0;
 }

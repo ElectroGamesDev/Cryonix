@@ -6,7 +6,7 @@
 #include "Mesh.h"
 #include <functional>
 
-namespace cl
+namespace cx
 {
     struct Bone
     {

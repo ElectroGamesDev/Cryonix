@@ -5,12 +5,12 @@
 #include <string>
 #include "Maths.h"
 
-namespace cl
+namespace cx
 {
     class Texture
     {
     public:
-        static std::vector<Texture*> s_textures; // Used for cl::Shutdown()
+        static std::vector<Texture*> s_textures; // Used for cx::Shutdown()
 
         /// Called once per frame to process async readback operations. WARNING: This should only be used internally!
         static void ProcessPendingReadbacks(uint32_t currentFrame);

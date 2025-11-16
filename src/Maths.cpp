@@ -2,7 +2,7 @@
 #include <random>
 #include <chrono>
 
-namespace cl
+namespace cx
 {
     static std::mt19937 s_rng;
 

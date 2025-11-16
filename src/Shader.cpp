@@ -5,7 +5,7 @@
 #include <iostream>
 #include <bgfx.h>
 
-namespace cl
+namespace cx
 {
     std::vector<Shader*> Shader::s_shaders;
     Shader* s_defaultShader = nullptr;

@@ -15,7 +15,7 @@
 #include "Camera2D.h"
 #include "Primitives.h"
 
-namespace cl
+namespace cx
 {
     // Framework lifetime
     bool Init(const Config& config = Config());

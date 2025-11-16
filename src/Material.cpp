@@ -5,7 +5,7 @@
 #include <iostream>
 #include <algorithm>
 
-namespace cl
+namespace cx
 {
     void Material::SetShader(Shader* shader)
     {

@@ -4,7 +4,7 @@
 #include "Model.h"
 #include "Maths.h"
 
-namespace cl
+namespace cx
 {
     void InitPrimitives();
     Material* GetPrimitiveMaterial();

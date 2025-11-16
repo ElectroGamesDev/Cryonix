@@ -11,7 +11,7 @@
 #include <cgltf.h>
 #include <iostream>
 
-namespace cl
+namespace cx
 {
     Model* LoadModel(std::string_view filePath, bool mergeMeshes)
     {

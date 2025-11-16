@@ -2,7 +2,7 @@
 
 #include "Maths.h"
 
-namespace cl
+namespace cx
 {
     class Camera2D
     {

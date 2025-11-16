@@ -9,7 +9,7 @@
 #include "Texture.h"
 #include <array>
 
-namespace cl
+namespace cx
 {
     using MaterialParam = std::variant<float, int, Vector2, Vector3, Vector4, Matrix4>;
 

@@ -7,7 +7,7 @@
 #include <array>
 #include <bgfx.h>
 
-namespace cl
+namespace cx
 {
     struct ShaderImpl;
 
@@ -39,7 +39,7 @@ namespace cl
     {
         friend class Material;
     public:
-        static std::vector<Shader*> s_shaders; // Used for cl::Shutdown()
+        static std::vector<Shader*> s_shaders; // Used for cx::Shutdown()
 
         Shader();
         ~Shader();

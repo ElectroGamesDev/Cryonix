@@ -13,7 +13,7 @@
 #include <draco/attributes/point_attribute.h>
 #include <cgltf.h>
 
-namespace cl
+namespace cx
 {
     static void NormalizeBoneWeights(float* weights, int count)
     {
@@ -947,7 +947,7 @@ namespace cl
 #else
             if (hasDraco)
             {
-                std::cerr << "[WARNING] Draco compression detected but not supported. You must recompile Crylib with Draco support. Skipping primitive." << std::endl;
+                std::cerr << "[WARNING] Draco compression detected but not supported. You must recompile Cryonix with Draco support. Skipping primitive." << std::endl;
                 return nullptr;
             }
             else

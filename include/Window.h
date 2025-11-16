@@ -5,7 +5,7 @@
 
 struct GLFWwindow;
 
-namespace cl
+namespace cx
 {
     class Window
     {

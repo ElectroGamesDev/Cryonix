@@ -3,7 +3,7 @@
 #include "Maths.h"
 #include <cstdint>
 
-namespace cl
+namespace cx
 {
     enum CameraMode
     {

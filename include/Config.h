@@ -12,7 +12,7 @@
 
 #define DRACO_SUPPORTED
 
-namespace cl
+namespace cx
 {
     enum RenderingAPI
     {
@@ -27,7 +27,7 @@ namespace cl
 
     struct Config
     {
-        std::string windowTitle = "Crylib Application";
+        std::string windowTitle = "Cryonix Application";
         int windowWidth = 800;
         int windowHeight = 600;
         bool windowResizable = true;
