@@ -27,8 +27,6 @@ int main()
     cx::Model* model = cx::LoadModel("models/Animation/Character.glb");
 
     // Primitives
-    cx::InitPrimitives();
-
     cx::Model primitive = cx::GenQuadModel();
 
     // Camera
