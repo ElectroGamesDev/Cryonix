@@ -73,6 +73,9 @@ namespace cx
 
     void InitPrimitives()
     {
+        if (s_defaultShader)
+            return;
+
         m_primitiveMaterial.SetShader(s_defaultShader);
     }
 
@@ -85,6 +88,8 @@ namespace cx
 
     Mesh GenCubeMesh(float width, float height, float length, bool smoothNormals, bool generateUVs, bool inward, bool centered)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -159,6 +164,8 @@ namespace cx
 
     Mesh GenSphereMesh(float radius, int rings, int slices, bool smoothNormals, bool generateUVs, bool inward, bool centered, float startAngle, float endAngle, bool hemiTop, bool hemiBottom)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -222,6 +229,8 @@ namespace cx
 
     Mesh GenPlaneMesh(float width, float length, int resX, int resZ, bool smoothNormals, bool generateUVs, bool inward, bool centered, Vector2 texRepeat, bool doubleSided)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -290,6 +299,8 @@ namespace cx
 
     Mesh GenCylinderMesh(float radius, float height, int slices, bool smoothNormals, bool generateUVs, bool inward, bool centered, bool cappedTop, bool cappedBottom)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -396,6 +407,8 @@ namespace cx
 
     Mesh GenConeMesh(float radius, float height, int slices, bool smoothNormals, bool generateUVs, bool inward, bool centered, bool capped, float topRadius)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -482,6 +495,8 @@ namespace cx
 
     Mesh GenQuadMesh(float width, float height, int resX, int resY, bool smoothNormals, bool generateUVs, bool inward, bool centered, Vector2 texRepeat, bool doubleSided)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
@@ -550,6 +565,8 @@ namespace cx
 
     Mesh GenCapsuleMesh(float radius, float height, int slices, int stacks, bool smoothNormals, bool generateUVs, bool inward, bool centered, float capRatio)
     {
+        InitPrimitives();
+
         Mesh mesh;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
