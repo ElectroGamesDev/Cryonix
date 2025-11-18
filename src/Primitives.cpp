@@ -73,7 +73,7 @@ namespace cx
 
     void InitPrimitives()
     {
-        if (s_defaultShader)
+        if (m_primitiveMaterial.GetShader())
             return;
 
         m_primitiveMaterial.SetShader(s_defaultShader);
