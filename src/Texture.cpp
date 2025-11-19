@@ -127,7 +127,7 @@ namespace cx
             flags |= BGFX_TEXTURE_SRGB;
 
         const bgfx::Memory* mem = bgfx::copy(data, static_cast<uint32_t>(width * height * channels));
-        m_handle = bgfx::createTexture2D(static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1, format, flags, mem);
+        m_handle = bgfx::createTexture2D(static_cast<uint16_t>(width), static_cast<uint16_t>(height), false, 1, format, flags, mem); // Todo: Mipmaps are default to false here
 
         m_width = width;
         m_height = height;
