@@ -66,13 +66,7 @@ Cryonix provides a unified API for rendering, animation, audio, and input, while
 
 ## Documentation
 
-Documentation is **coming soon** and will cover:
-- Setup and initialization
-- Rendering 2D and 3D scenes
-- Loading and animating models
-- Using PBR materials and lighting
-- Audio playback and spatial sound
-- Platform-specific configuration
+https://cryonixlib.com/docs
 
 ---
 
