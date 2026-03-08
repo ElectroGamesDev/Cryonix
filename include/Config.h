@@ -2,13 +2,13 @@
 
 #include <string>
 
-#if defined(_WIN32) || defined(_WIN64)
-    #define PLATFORM_WINDOWS
-#elif defined(__linux__)
-    #define PLATFORM_LINUX
-#elif defined(__APPLE__)
-    #define PLATFORM_MACOS
-#endif
+//#if defined(_WIN32) || defined(_WIN64)
+//    #define PLATFORM_WINDOWS
+//#elif defined(__linux__)
+//    #define PLATFORM_LINUX
+//#elif defined(__APPLE__)
+//    #define PLATFORM_MACOS
+//#endif
 
 #define DRACO_SUPPORTED
 
