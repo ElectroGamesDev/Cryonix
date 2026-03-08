@@ -941,12 +941,10 @@ namespace cx
                 auto cached = textureCache.find(tex->image);
                 if (cached != textureCache.end())
                 {
-                    if (cached->second)
-                    {
-                        Material* mat = materialMap[material];
-                        if (mat)
-                            mat->SetMaterialMap(type, cached->second);
-                    }
+                    Material* mat = materialMap[material];
+                    if (mat)
+                        mat->SetMaterialMap(type, cached->second);
+
                     return;
                 }
 
@@ -967,14 +965,10 @@ namespace cx
                             textureCache[tex->image] = texture;
                         }
                         else
-                        {
-                            textureCache[tex->image] = nullptr; // mark failed so second callers skip cleanly
                             delete texture;
-                        }
+
                         stbi_image_free(decoded.pixels);
                     }
-                    else
-                        textureCache[tex->image] = nullptr; // decode failed, mark as attempted
                     return;
                 }
 
@@ -1181,70 +1175,66 @@ namespace cx
                         {
                             const uint8_t* base = AccessorBase(accessor);
                             size_t stride = AccessorStride(accessor, 3);
-                            if (base)
+                            for (size_t v = 0; v < accessor->count; ++v)
                             {
-                                for (size_t v = 0; v < accessor->count; ++v)
+                                Vector3 pos;
+                                if (base)
                                 {
                                     const float* p = reinterpret_cast<const float*>(base + stride * v);
-                                    vertices[v].position = hasSkin ? Vector3(p[0], p[1], p[2]) : worldTransform.TransformPoint(Vector3(p[0], p[1], p[2]));
+                                    pos = Vector3(p[0], p[1], p[2]);
                                 }
-                            }
-                            else
-                            {
-                                for (size_t v = 0; v < accessor->count; ++v)
+                                else
                                 {
                                     float raw[3];
                                     cgltf_accessor_read_float(accessor, v, raw, 3);
-                                    vertices[v].position = hasSkin ? Vector3(raw[0], raw[1], raw[2]) : worldTransform.TransformPoint(Vector3(raw[0], raw[1], raw[2]));
+                                    pos = Vector3(raw[0], raw[1], raw[2]);
                                 }
+                                vertices[v].position = hasSkin ? pos : worldTransform.TransformPoint(pos);
                             }
                         }
                         else if (attribute.type == cgltf_attribute_type_normal)
                         {
                             const uint8_t* base = AccessorBase(accessor);
                             size_t stride = AccessorStride(accessor, 3);
-                            if (base)
+                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                             {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                Vector3 normal;
+                                if (base)
                                 {
                                     const float* p = reinterpret_cast<const float*>(base + stride * v);
-                                    Vector3 normal(p[0], p[1], p[2]);
-                                    vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
+                                    normal = Vector3(p[0], p[1], p[2]);
                                 }
-                            }
-                            else
-                            {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                else
                                 {
                                     float raw[3];
                                     cgltf_accessor_read_float(accessor, v, raw, 3);
-                                    Vector3 normal(raw[0], raw[1], raw[2]);
-                                    vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
+                                    normal = Vector3(raw[0], raw[1], raw[2]);
                                 }
+                                vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
                             }
                         }
                         else if (attribute.type == cgltf_attribute_type_tangent)
                         {
                             const uint8_t* base = AccessorBase(accessor);
                             size_t stride = AccessorStride(accessor, 4);
-                            if (base)
+                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                             {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                float tangent[4];
+                                if (base)
                                 {
                                     const float* p = reinterpret_cast<const float*>(base + stride * v);
-                                    Vector3 tangentVec = hasSkin ? Vector3(p[0], p[1], p[2]) : worldTransform.TransformDirection(Vector3(p[0], p[1], p[2])).Normalize();
-                                    vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, p[3]);
+                                    tangent[0] = p[0]; tangent[1] = p[1]; tangent[2] = p[2]; tangent[3] = p[3];
                                 }
-                            }
-                            else
-                            {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                                {
-                                    float t[4];
-                                    cgltf_accessor_read_float(accessor, v, t, 4);
-                                    Vector3 tangentVec = hasSkin ? Vector3(t[0], t[1], t[2]) : worldTransform.TransformDirection(Vector3(t[0], t[1], t[2])).Normalize();
-                                    vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, t[3]);
-                                }
+                                else
+                                    cgltf_accessor_read_float(accessor, v, tangent, 4);
+
+                                Vector3 tangentVec;
+                                if (hasSkin)
+                                    tangentVec = Vector3(tangent[0], tangent[1], tangent[2]);
+                                else
+                                    tangentVec = worldTransform.TransformDirection(Vector3(tangent[0], tangent[1], tangent[2])).Normalize();
+
+                                vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, tangent[3]);
                             }
                         }
                         else if (attribute.type == cgltf_attribute_type_texcoord)
@@ -1253,17 +1243,14 @@ namespace cx
                             size_t stride = AccessorStride(accessor, 2);
                             if (attribute.index == 0)
                             {
-                                if (base)
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                                 {
-                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    if (base)
                                     {
                                         const float* p = reinterpret_cast<const float*>(base + stride * v);
                                         vertices[v].texCoord = Vector2(p[0], p[1]);
                                     }
-                                }
-                                else
-                                {
-                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    else
                                     {
                                         float uv[2];
                                         cgltf_accessor_read_float(accessor, v, uv, 2);
@@ -1273,17 +1260,14 @@ namespace cx
                             }
                             else if (attribute.index == 1)
                             {
-                                if (base)
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                                 {
-                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    if (base)
                                     {
                                         const float* p = reinterpret_cast<const float*>(base + stride * v);
                                         vertices[v].texCoord1 = Vector2(p[0], p[1]);
                                     }
-                                }
-                                else
-                                {
-                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    else
                                     {
                                         float uv[2];
                                         cgltf_accessor_read_float(accessor, v, uv, 2);
@@ -1292,22 +1276,59 @@ namespace cx
                                 }
                             }
                         }
+                        else if (attribute.type == cgltf_attribute_type_joints && attribute.index == 0)
+                        {
+                            if (!accessor->buffer_view || !accessor->buffer_view->buffer->data)
+                            {
+                                std::cerr << "[ERROR] JOINTS attribute has missing or null buffer" << std::endl;
+                            }
+                            else if (accessor->component_type != cgltf_component_type_r_8u
+                                && accessor->component_type != cgltf_component_type_r_16u)
+                            {
+                                std::cerr << "[ERROR] JOINTS attribute has invalid component type (expected u8 or u16)" << std::endl;
+                            }
+                            else
+                            {
+                                const uint8_t* jointsBase = static_cast<const uint8_t*>(accessor->buffer_view->buffer->data)
+                                    + accessor->buffer_view->offset + accessor->offset;
+                                // cgltf uses stride=0 to mean tightly packed; fall back to element size * component count
+                                size_t jointsStride = accessor->stride;
+
+                                if (accessor->component_type == cgltf_component_type_r_8u)
+                                {
+                                    if (!jointsStride) jointsStride = 4 * sizeof(uint8_t);
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        const uint8_t* ptr = jointsBase + jointsStride * v;
+                                        for (int c = 0; c < 4; ++c)
+                                            vertices[v].boneIndices[c] = static_cast<float>(ptr[c]);
+                                    }
+                                }
+                                else
+                                {
+                                    if (!jointsStride) jointsStride = 4 * sizeof(uint16_t);
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(jointsBase + jointsStride * v);
+                                        for (int c = 0; c < 4; ++c)
+                                            vertices[v].boneIndices[c] = static_cast<float>(ptr16[c]);
+                                    }
+                                }
+                            }
+                        }
                         else if (attribute.type == cgltf_attribute_type_weights && attribute.index == 0)
                         {
                             const uint8_t* base = AccessorBase(accessor);
                             size_t stride = AccessorStride(accessor, 4);
-                            if (base)
+                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                             {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                if (base)
                                 {
                                     const float* p = reinterpret_cast<const float*>(base + stride * v);
                                     for (int c = 0; c < 4; ++c)
                                         vertices[v].boneWeights[c] = p[c];
                                 }
-                            }
-                            else
-                            {
-                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                else
                                 {
                                     float weights[4];
                                     cgltf_accessor_read_float(accessor, v, weights, 4);
