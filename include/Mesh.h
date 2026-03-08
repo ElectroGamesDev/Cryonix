@@ -43,7 +43,9 @@ namespace cx
         Mesh(const Mesh& other);
 
         void SetVertices(const std::vector<Vertex>& vertices);
+        void SetVertices(std::vector<Vertex>&& vertices);
         void SetIndices(const std::vector<uint32_t>& indices);
+        void SetIndices(std::vector<uint32_t>&& indices);
         std::vector<Vertex>& GetVertices();
         std::vector<uint32_t>& GetIndices();
         int GetTriangleCount();

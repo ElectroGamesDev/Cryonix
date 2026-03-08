@@ -38,9 +38,21 @@ namespace cx
         m_uploaded = false;
     }
 
+    void Mesh::SetVertices(std::vector<Vertex>&& vertices)
+    {
+        m_vertices = std::move(vertices);
+        m_uploaded = false;
+    }
+
     void Mesh::SetIndices(const std::vector<uint32_t>& indices)
     {
         m_indices = indices;
+        m_uploaded = false;
+    }
+
+    void Mesh::SetIndices(std::vector<uint32_t>&& indices)
+    {
+        m_indices = std::move(indices);
         m_uploaded = false;
     }
 
