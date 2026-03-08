@@ -5,6 +5,8 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <future>
+#include <memory>
 #include <stb_image.h>
 #include "basis universal/basisu_transcoder.h"
 #include <draco/compression/decode.h>
@@ -222,6 +224,26 @@ namespace cx
         return true;
     }
 #endif
+
+    static const uint8_t* AccessorBase(const cgltf_accessor* accessor)
+    {
+        if (accessor->component_type != cgltf_component_type_r_32f
+            || accessor->is_sparse
+            || !accessor->buffer_view
+            || !accessor->buffer_view->buffer->data)
+        {
+            return nullptr;
+        }
+        return static_cast<const uint8_t*>(accessor->buffer_view->buffer->data)
+            + accessor->buffer_view->offset
+            + accessor->offset;
+    }
+
+    static size_t AccessorStride(const cgltf_accessor* accessor, size_t componentCount)
+    {
+        return accessor->stride ? accessor->stride : componentCount * sizeof(float);
+    }
+
     AnimationClip* LoadAnimation(cgltf_animation* anim, size_t index, const std::unordered_map<cgltf_node*, int>& nodeToJointMap, const std::unordered_map<cgltf_node*, int>& nodeToIndexMap)
     {
         AnimationClip* clip = new AnimationClip();
@@ -269,27 +291,41 @@ namespace cx
             AnimationInterpolation interpType = AnimationInterpolation::Linear;
             switch (sampler->interpolation)
             {
-                case cgltf_interpolation_type_linear:
-                    interpType = AnimationInterpolation::Linear;
-                    break;
-                case cgltf_interpolation_type_step:
-                    interpType = AnimationInterpolation::Step;
-                    break;
-                case cgltf_interpolation_type_cubic_spline:
-                    interpType = AnimationInterpolation::CubicSpline;
-                    break;
-                default:
-                    interpType = AnimationInterpolation::Linear;
-                    break;
+            case cgltf_interpolation_type_linear:
+                interpType = AnimationInterpolation::Linear;
+                break;
+            case cgltf_interpolation_type_step:
+                interpType = AnimationInterpolation::Step;
+                break;
+            case cgltf_interpolation_type_cubic_spline:
+                interpType = AnimationInterpolation::CubicSpline;
+                break;
+            default:
+                interpType = AnimationInterpolation::Linear;
+                break;
             }
 
             cgltf_accessor* timeAccessor = sampler->input;
             std::vector<float> times(timeAccessor->count);
-            for (size_t t = 0; t < timeAccessor->count; ++t)
+            const uint8_t* timeBase = AccessorBase(timeAccessor);
+            size_t timeStride = AccessorStride(timeAccessor, 1);
+            if (timeBase)
             {
-                cgltf_accessor_read_float(timeAccessor, t, &times[t], 1);
-                if (times[t] > maxTime)
-                    maxTime = times[t];
+                for (size_t t = 0; t < timeAccessor->count; ++t)
+                {
+                    times[t] = *reinterpret_cast<const float*>(timeBase + timeStride * t);
+                    if (times[t] > maxTime)
+                        maxTime = times[t];
+                }
+            }
+            else
+            {
+                for (size_t t = 0; t < timeAccessor->count; ++t)
+                {
+                    cgltf_accessor_read_float(timeAccessor, t, &times[t], 1);
+                    if (times[t] > maxTime)
+                        maxTime = times[t];
+                }
             }
 
             cgltf_accessor* dataAccessor = sampler->output;
@@ -436,34 +472,72 @@ namespace cx
                 }
                 else
                 {
+                    const uint8_t* dataBase = AccessorBase(dataAccessor);
+
                     if (channel->target_path == cgltf_animation_path_type_translation)
                     {
-                        animChannel.translations.resize(dataAccessor->count); // Todo: Should this be keyCount?
-                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        size_t dataStride = AccessorStride(dataAccessor, 3);
+                        animChannel.translations.resize(dataAccessor->count);
+                        if (dataBase)
                         {
-                            float trans[3];
-                            cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                            animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(dataBase + dataStride * v);
+                                animChannel.translations[v] = Vector3(p[0], p[1], p[2]);
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float trans[3];
+                                cgltf_accessor_read_float(dataAccessor, v, trans, 3);
+                                animChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                            }
                         }
                     }
                     else if (channel->target_path == cgltf_animation_path_type_rotation)
                     {
-                        animChannel.rotations.resize(dataAccessor->count); // Todo: Should this be keyCount?
-                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        size_t dataStride = AccessorStride(dataAccessor, 4);
+                        animChannel.rotations.resize(dataAccessor->count);
+                        if (dataBase)
                         {
-                            float rot[4];
-                            cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                            animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(dataBase + dataStride * v);
+                                animChannel.rotations[v] = Quaternion(p[0], p[1], p[2], p[3]).Normalize();
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float rot[4];
+                                cgltf_accessor_read_float(dataAccessor, v, rot, 4);
+                                animChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                            }
                         }
                     }
                     else if (channel->target_path == cgltf_animation_path_type_scale)
                     {
-                        animChannel.scales.resize(dataAccessor->count); // Todo: Should this be keyCount?
-                        for (size_t v = 0; v < dataAccessor->count; ++v) // Todo: Should this be keyCount?
+                        size_t dataStride = AccessorStride(dataAccessor, 3);
+                        animChannel.scales.resize(dataAccessor->count);
+                        if (dataBase)
                         {
-                            float scale[3];
-                            cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                            animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(dataBase + dataStride * v);
+                                animChannel.scales[v] = Vector3(p[0], p[1], p[2]);
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float scale[3];
+                                cgltf_accessor_read_float(dataAccessor, v, scale, 3);
+                                animChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                            }
                         }
                     }
                 }
@@ -551,34 +625,72 @@ namespace cx
                 }
                 else
                 {
+                    const uint8_t* nodeDataBase = AccessorBase(dataAccessor);
+
                     if (channel->target_path == cgltf_animation_path_type_translation)
                     {
+                        size_t ds = AccessorStride(dataAccessor, 3);
                         nodeChannel.translations.resize(dataAccessor->count);
-                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        if (nodeDataBase)
                         {
-                            float trans[3];
-                            cgltf_accessor_read_float(dataAccessor, v, trans, 3);
-                            nodeChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(nodeDataBase + ds * v);
+                                nodeChannel.translations[v] = Vector3(p[0], p[1], p[2]);
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float trans[3];
+                                cgltf_accessor_read_float(dataAccessor, v, trans, 3);
+                                nodeChannel.translations[v] = Vector3(trans[0], trans[1], trans[2]);
+                            }
                         }
                     }
                     else if (channel->target_path == cgltf_animation_path_type_rotation)
                     {
+                        size_t ds = AccessorStride(dataAccessor, 4);
                         nodeChannel.rotations.resize(dataAccessor->count);
-                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        if (nodeDataBase)
                         {
-                            float rot[4];
-                            cgltf_accessor_read_float(dataAccessor, v, rot, 4);
-                            nodeChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(nodeDataBase + ds * v);
+                                nodeChannel.rotations[v] = Quaternion(p[0], p[1], p[2], p[3]).Normalize();
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float rot[4];
+                                cgltf_accessor_read_float(dataAccessor, v, rot, 4);
+                                nodeChannel.rotations[v] = Quaternion(rot[0], rot[1], rot[2], rot[3]).Normalize();
+                            }
                         }
                     }
                     else if (channel->target_path == cgltf_animation_path_type_scale)
                     {
+                        size_t ds = AccessorStride(dataAccessor, 3);
                         nodeChannel.scales.resize(dataAccessor->count);
-                        for (size_t v = 0; v < dataAccessor->count; ++v)
+                        if (nodeDataBase)
                         {
-                            float scale[3];
-                            cgltf_accessor_read_float(dataAccessor, v, scale, 3);
-                            nodeChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                const float* p = reinterpret_cast<const float*>(nodeDataBase + ds * v);
+                                nodeChannel.scales[v] = Vector3(p[0], p[1], p[2]);
+                            }
+                        }
+                        else
+                        {
+                            for (size_t v = 0; v < dataAccessor->count; ++v)
+                            {
+                                float scale[3];
+                                cgltf_accessor_read_float(dataAccessor, v, scale, 3);
+                                nodeChannel.scales[v] = Vector3(scale[0], scale[1], scale[2]);
+                            }
                         }
                     }
                 }
@@ -720,14 +832,14 @@ namespace cx
                 std::vector<Matrix4> bindPoseGlobal(jointCount, Matrix4::Identity());
 
                 std::function<void(int, const Matrix4&)> computeBindPose = [&](int index, const Matrix4& parentTransform)
-                {
-                    const Matrix4& local = skeleton->bones[index].localTransform;
-                    Matrix4 global = parentTransform * local;
-                    bindPoseGlobal[index] = global;
+                    {
+                        const Matrix4& local = skeleton->bones[index].localTransform;
+                        Matrix4 global = parentTransform * local;
+                        bindPoseGlobal[index] = global;
 
-                    for (int childIdx : children[index])
-                        computeBindPose(childIdx, global);
-                };
+                        for (int childIdx : children[index])
+                            computeBindPose(childIdx, global);
+                    };
 
                 for (size_t i = 0; i < jointCount; ++i)
                 {
@@ -747,503 +859,685 @@ namespace cx
             model->SetSkinned(true);
         }
 
+        // Pre-decode all textures in parallel (stbi is thread-safe for PNG/JPEG)
+        struct DecodedImage
+        {
+            unsigned char* pixels = nullptr;
+            int width = 0;
+            int height = 0;
+            bool valid = false;
+        };
+
+        std::unordered_map<cgltf_image*, std::future<DecodedImage>> textureFutures;
+
+        for (size_t mi = 0; mi < data->materials_count; ++mi)
+        {
+            cgltf_material& mat = data->materials[mi];
+            cgltf_texture* texRefs[] = {
+                mat.pbr_metallic_roughness.base_color_texture.texture,
+                mat.pbr_metallic_roughness.metallic_roughness_texture.texture,
+                mat.normal_texture.texture,
+                mat.occlusion_texture.texture,
+                mat.emissive_texture.texture,
+            };
+
+            for (cgltf_texture* tex : texRefs)
+            {
+                if (!tex || !tex->image || textureFutures.count(tex->image))
+                    continue;
+
+                cgltf_image* image = tex->image;
+                const uint8_t* srcData = nullptr;
+                size_t srcSize = 0;
+                std::shared_ptr<std::vector<uint8_t>> ownedData;
+
+                if (image->buffer_view && image->buffer_view->buffer->data)
+                {
+                    srcData = static_cast<const uint8_t*>(image->buffer_view->buffer->data) + image->buffer_view->offset;
+                    srcSize = image->buffer_view->size;
+                }
+                else if (image->uri)
+                {
+                    std::string texPath = path.parent_path().string() + "/" + image->uri;
+                    std::ifstream file(texPath, std::ios::binary | std::ios::ate);
+                    if (!file) continue;
+                    srcSize = file.tellg();
+                    file.seekg(0);
+                    ownedData = std::make_shared<std::vector<uint8_t>>(srcSize);
+                    file.read(reinterpret_cast<char*>(ownedData->data()), srcSize);
+                    srcData = ownedData->data();
+                }
+
+                if (!srcData || srcSize == 0) continue;
+
+                std::string mime = image->mime_type ? image->mime_type : "";
+                if (mime.empty() && srcSize >= 8)
+                {
+                    if (srcData[0] == 0x89 && srcData[1] == 'P') mime = "image/png";
+                    else if (srcData[0] == 0xFF && srcData[1] == 0xD8) mime = "image/jpeg";
+                }
+
+                if (mime != "image/png" && mime != "image/jpeg")
+                    continue;
+
+                textureFutures.emplace(image, std::async(std::launch::async,
+                    [srcData, srcSize, ownedData]() -> DecodedImage {
+                        DecodedImage result;
+                        int channels;
+                        result.pixels = stbi_load_from_memory(srcData, static_cast<int>(srcSize),
+                            &result.width, &result.height, &channels, 4);
+                        result.valid = (result.pixels != nullptr);
+                        return result;
+                    }));
+            }
+        }
+
         // Texture loading lambda
         auto loadAndSetMap = [&](cgltf_texture* tex, MaterialMapType type, cgltf_material* material) -> void
-        {
-            if (!tex || !tex->image)
-                return;
-
-            auto cached = textureCache.find(tex->image);
-            if (cached != textureCache.end())
             {
-                Material* mat = materialMap[material];
-                if (mat)
-                    mat->SetMaterialMap(type, cached->second);
+                if (!tex || !tex->image)
+                    return;
 
-                return;
-            }
-
-            cgltf_image* image = tex->image;
-            uint8_t* imageData = nullptr;
-            size_t size = 0;
-            std::string mime = image->mime_type ? image->mime_type : "";
-            bool isExternal = false;
-
-            if (image->buffer_view && image->buffer_view->buffer->data)
-            {
-                imageData = static_cast<uint8_t*>(image->buffer_view->buffer->data) + image->buffer_view->offset;
-                size = image->buffer_view->size;
-            }
-            else if (image->uri)
-            {
-                std::string texPath = path.parent_path().string() + "/" + image->uri;
-                std::ifstream file(texPath, std::ios::binary | std::ios::ate);
-                if (!file)
+                auto cached = textureCache.find(tex->image);
+                if (cached != textureCache.end())
                 {
-                    std::cerr << "[ERROR] Failed to open external texture: " << texPath << std::endl;
+                    if (cached->second)
+                    {
+                        Material* mat = materialMap[material];
+                        if (mat)
+                            mat->SetMaterialMap(type, cached->second);
+                    }
                     return;
                 }
 
-                size = file.tellg();
-                file.seekg(0);
-                imageData = new uint8_t[size];
-                file.read(reinterpret_cast<char*>(imageData), size);
-                file.close();
-                isExternal = true;
+                // Use pre-decoded texture if available
+                auto futureIt = textureFutures.find(tex->image);
+                if (futureIt != textureFutures.end())
+                {
+                    DecodedImage decoded = futureIt->second.get();
+                    if (decoded.valid)
+                    {
+                        Texture* texture = new Texture();
+                        bool isColorTexture = (type == MaterialMapType::Albedo || type == MaterialMapType::Emissive);
+                        if (texture->LoadFromMemory(decoded.pixels, decoded.width, decoded.height, 4, isColorTexture))
+                        {
+                            Material* mat = materialMap[material];
+                            if (mat)
+                                mat->SetMaterialMap(type, texture);
+                            textureCache[tex->image] = texture;
+                        }
+                        else
+                        {
+                            textureCache[tex->image] = nullptr; // mark failed so second callers skip cleanly
+                            delete texture;
+                        }
+                        stbi_image_free(decoded.pixels);
+                    }
+                    else
+                        textureCache[tex->image] = nullptr; // decode failed, mark as attempted
+                    return;
+                }
+
+                cgltf_image* image = tex->image;
+                uint8_t* imageData = nullptr;
+                size_t size = 0;
+                std::string mime = image->mime_type ? image->mime_type : "";
+                bool isExternal = false;
+
+                if (image->buffer_view && image->buffer_view->buffer->data)
+                {
+                    imageData = static_cast<uint8_t*>(image->buffer_view->buffer->data) + image->buffer_view->offset;
+                    size = image->buffer_view->size;
+                }
+                else if (image->uri)
+                {
+                    std::string texPath = path.parent_path().string() + "/" + image->uri;
+                    std::ifstream file(texPath, std::ios::binary | std::ios::ate);
+                    if (!file)
+                    {
+                        std::cerr << "[ERROR] Failed to open external texture: " << texPath << std::endl;
+                        return;
+                    }
+
+                    size = file.tellg();
+                    file.seekg(0);
+                    imageData = new uint8_t[size];
+                    file.read(reinterpret_cast<char*>(imageData), size);
+                    file.close();
+                    isExternal = true;
+
+                    if (mime.empty())
+                    {
+                        std::string ext = texPath.substr(texPath.find_last_of(".") + 1);
+                        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                        if (ext == "png")
+                            mime = "image/png";
+                        else if (ext == "jpg" || ext == "jpeg")
+                            mime = "image/jpeg";
+                        else if (ext == "ktx2")
+                            mime = "image/ktx2";
+                        else
+                        {
+                            std::cerr << "[ERROR] Unknown texture extension: " << ext << std::endl;
+                            delete[] imageData;
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    std::cerr << "[ERROR] No data or URI for texture" << std::endl;
+                    return;
+                }
+
+                if (mime.empty() && imageData && size >= 8)
+                {
+                    if (imageData[0] == 0x89 && imageData[1] == 'P' && imageData[2] == 'N' && imageData[3] == 'G')
+                        mime = "image/png";
+                    else if (imageData[0] == 0xFF && imageData[1] == 0xD8)
+                        mime = "image/jpeg";
+                    else if (imageData[0] == 0xAB && imageData[1] == 'K' && imageData[2] == 'T' && imageData[3] == 'X')
+                        mime = "image/ktx2";
+                }
 
                 if (mime.empty())
                 {
-                    std::string ext = texPath.substr(texPath.find_last_of(".") + 1);
-                    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-                    if (ext == "png")
-                        mime = "image/png";
-                    else if (ext == "jpg" || ext == "jpeg") 
-                        mime = "image/jpeg";
-                    else if (ext == "ktx2")
-                        mime = "image/ktx2";
-                    else
-                    {
-                        std::cerr << "[ERROR] Unknown texture extension: " << ext << std::endl;
+                    std::cerr << "[ERROR] Could not determine texture MIME type" << std::endl;
+                    if (isExternal)
                         delete[] imageData;
-                        return;
+
+                    return;
+                }
+
+                Texture* texture = new Texture();
+                bool success = false;
+                bool isColorTexture = (type == MaterialMapType::Albedo || type == MaterialMapType::Emissive);
+
+                if (mime == "image/png" || mime == "image/jpeg")
+                {
+                    int width, height, channels;
+                    unsigned char* pixels = stbi_load_from_memory(imageData, static_cast<int>(size), &width, &height, &channels, 4);
+                    if (pixels)
+                    {
+                        success = texture->LoadFromMemory(pixels, width, height, 4, isColorTexture);
+                        stbi_image_free(pixels);
+                    }
+                    else
+                        std::cerr << "[ERROR] Failed to load texture: " << stbi_failure_reason() << std::endl;
+                }
+                else if (mime == "image/ktx2")
+                {
+                    basist::ktx2_transcoder transcoder;
+                    if (transcoder.init(imageData, static_cast<uint32_t>(size)))
+                    {
+                        if (transcoder.start_transcoding())
+                        {
+                            uint32_t width = transcoder.get_width();
+                            uint32_t height = transcoder.get_height();
+
+                            if (width > 0 && height > 0)
+                            {
+                                uint32_t dst_size = width * height * 4;
+                                uint8_t* dst = new uint8_t[dst_size];
+
+                                if (transcoder.transcode_image_level(0, 0, 0, dst, width * height, basist::transcoder_texture_format::cTFRGBA32))
+                                    success = texture->LoadFromMemory(dst, width, height, 4, isColorTexture);
+                                else
+                                    std::cerr << "[ERROR] BasisU transcode_image_level failed" << std::endl;
+
+                                delete[] dst;
+                            }
+                            transcoder.clear();
+                        }
                     }
                 }
-            }
-            else
-            {
-                std::cerr << "[ERROR] No data or URI for texture" << std::endl;
-                return;
-            }
 
-            if (mime.empty() && imageData && size >= 8)
-            {
-                if (imageData[0] == 0x89 && imageData[1] == 'P' && imageData[2] == 'N' && imageData[3] == 'G')
-                    mime = "image/png";
-                else if (imageData[0] == 0xFF && imageData[1] == 0xD8)
-                    mime = "image/jpeg";
-                else if (imageData[0] == 0xAB && imageData[1] == 'K' && imageData[2] == 'T' && imageData[3] == 'X')
-                    mime = "image/ktx2";
-            }
-
-            if (mime.empty())
-            {
-                std::cerr << "[ERROR] Could not determine texture MIME type" << std::endl;
                 if (isExternal)
                     delete[] imageData;
 
-                return;
-            }
-
-            Texture* texture = new Texture();
-            bool success = false;
-            bool isColorTexture = (type == MaterialMapType::Albedo || type == MaterialMapType::Emissive);
-
-            if (mime == "image/png" || mime == "image/jpeg")
-            {
-                int width, height, channels;
-                unsigned char* pixels = stbi_load_from_memory(imageData, static_cast<int>(size), &width, &height, &channels, 4);
-                if (pixels)
+                if (success)
                 {
-                    success = texture->LoadFromMemory(pixels, width, height, 4, isColorTexture);
-                    stbi_image_free(pixels);
+                    Material* mat = materialMap[material];
+                    if (mat)
+                        mat->SetMaterialMap(type, texture);
+
+                    textureCache[tex->image] = texture;
                 }
                 else
-                    std::cerr << "[ERROR] Failed to load texture: " << stbi_failure_reason() << std::endl;
-            }
-            else if (mime == "image/ktx2")
-            {
-                basist::ktx2_transcoder transcoder;
-                if (transcoder.init(imageData, static_cast<uint32_t>(size)))
-                {
-                    if (transcoder.start_transcoding())
-                    {
-                        uint32_t width = transcoder.get_width();
-                        uint32_t height = transcoder.get_height();
-
-                        if (width > 0 && height > 0)
-                        {
-                            uint32_t dst_size = width * height * 4;
-                            uint8_t* dst = new uint8_t[dst_size];
-
-                            if (transcoder.transcode_image_level(0, 0, 0, dst, width * height, basist::transcoder_texture_format::cTFRGBA32))
-                                success = texture->LoadFromMemory(dst, width, height, 4, isColorTexture);
-                            else
-                                std::cerr << "[ERROR] BasisU transcode_image_level failed" << std::endl;
-
-                            delete[] dst;
-                        }
-                        transcoder.clear();
-                    }
-                }
-            }
-
-            if (isExternal)
-                delete[] imageData;
-
-            if (success)
-            {
-                Material* mat = materialMap[material];
-                if (mat)
-                    mat->SetMaterialMap(type, texture);
-
-                textureCache[tex->image] = texture;
-            }
-            else
-                delete texture;
-        };
+                    delete texture;
+            };
 
         // Primitive processing lambda
         auto processPrimitive = [&](cgltf_mesh& meshData, cgltf_primitive& primitive, const Matrix4& worldTransform, bool hasSkin, cgltf_node* node) -> std::shared_ptr<Mesh>
-        {
-            if (primitive.type != cgltf_primitive_type_triangles)
             {
-                std::cerr << "[WARNING] Skipping non-triangle primitive (mode: " << primitive.type << ")" << std::endl;
-                return nullptr;
-            }
-
-            auto mesh = std::make_shared<Mesh>();
-            std::vector<Vertex> vertices;
-            std::vector<uint32_t> indices;
-
-            mesh->SetSkinned(hasSkin);
-
-            // Check for Draco compression
-            bool hasDraco = false;
-            for (size_t ext_i = 0; ext_i < primitive.extensions_count; ++ext_i)
-            {
-                if (strcmp(primitive.extensions[ext_i].name, "KHR_draco_mesh_compression") == 0)
+                if (primitive.type != cgltf_primitive_type_triangles)
                 {
-                    hasDraco = true;
-                    break;
-                }
-            }
-
-#ifdef DRACO_SUPPORTED
-            if (hasDraco)
-            {
-                if (!DecompressDraco(primitive, data, vertices, indices))
-                {
-                    std::cerr << "[ERROR] Failed to decompress Draco primitive" << std::endl;
+                    std::cerr << "[WARNING] Skipping non-triangle primitive (mode: " << primitive.type << ")" << std::endl;
                     return nullptr;
                 }
 
-                // Normalize bone weights
-                for (auto& vertex : vertices)
-                    NormalizeBoneWeights(vertex.boneWeights, 4);
+                auto mesh = std::make_shared<Mesh>();
+                std::vector<Vertex> vertices;
+                std::vector<uint32_t> indices;
 
-                // Apply world transform if not skinned
-                if (!hasSkin)
+                mesh->SetSkinned(hasSkin);
+
+                // Check for Draco compression
+                bool hasDraco = false;
+                for (size_t ext_i = 0; ext_i < primitive.extensions_count; ++ext_i)
                 {
+                    if (strcmp(primitive.extensions[ext_i].name, "KHR_draco_mesh_compression") == 0)
+                    {
+                        hasDraco = true;
+                        break;
+                    }
+                }
+
+#ifdef DRACO_SUPPORTED
+                if (hasDraco)
+                {
+                    if (!DecompressDraco(primitive, data, vertices, indices))
+                    {
+                        std::cerr << "[ERROR] Failed to decompress Draco primitive" << std::endl;
+                        return nullptr;
+                    }
+
+                    // Normalize bone weights
                     for (auto& vertex : vertices)
+                        NormalizeBoneWeights(vertex.boneWeights, 4);
+
+                    // Apply world transform if not skinned
+                    if (!hasSkin)
                     {
-                        vertex.position = worldTransform.TransformPoint(vertex.position);
-                        vertex.normal = worldTransform.TransformDirection(vertex.normal).Normalize();
-                        Vector3 tangentDir = worldTransform.TransformDirection(Vector3(vertex.tangent.x, vertex.tangent.y, vertex.tangent.z)).Normalize();
-                        vertex.tangent = Vector4(tangentDir.x, tangentDir.y, tangentDir.z, vertex.tangent.w);
+                        for (auto& vertex : vertices)
+                        {
+                            vertex.position = worldTransform.TransformPoint(vertex.position);
+                            vertex.normal = worldTransform.TransformDirection(vertex.normal).Normalize();
+                            Vector3 tangentDir = worldTransform.TransformDirection(Vector3(vertex.tangent.x, vertex.tangent.y, vertex.tangent.z)).Normalize();
+                            vertex.tangent = Vector4(tangentDir.x, tangentDir.y, tangentDir.z, vertex.tangent.w);
+                        }
                     }
                 }
-            }
-            else
+                else
 #else
-            if (hasDraco)
-            {
-                std::cerr << "[WARNING] Draco compression detected but not supported. You must recompile Cryonix with Draco support. Skipping primitive." << std::endl;
-                return nullptr;
-            }
-            else
+                if (hasDraco)
+                {
+                    std::cerr << "[WARNING] Draco compression detected but not supported. You must recompile Cryonix with Draco support. Skipping primitive." << std::endl;
+                    return nullptr;
+                }
+                else
 #endif
-            {
-                // Load uncompressed attributes
-                for (size_t k = 0; k < primitive.attributes_count; ++k)
                 {
-                    cgltf_attribute& attribute = primitive.attributes[k];
-                    cgltf_accessor* accessor = attribute.data;
-
-                    if (vertices.empty())
-                        vertices.resize(accessor->count);
-
-                    if (attribute.type == cgltf_attribute_type_position)
+                    // Load uncompressed attributes
+                    for (size_t k = 0; k < primitive.attributes_count; ++k)
                     {
-                        for (size_t v = 0; v < accessor->count; ++v)
-                        {
-                            float pos[3];
-                            cgltf_accessor_read_float(accessor, v, pos, 3);
-                            if (hasSkin)
-                                vertices[v].position = Vector3(pos[0], pos[1], pos[2]);
-                            else
-                                vertices[v].position = worldTransform.TransformPoint(Vector3(pos[0], pos[1], pos[2]));
-                        }
-                    }
-                    else if (attribute.type == cgltf_attribute_type_normal)
-                    {
-                        for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                        {
-                            float normal[3];
-                            cgltf_accessor_read_float(accessor, v, normal, 3);
-                            if (hasSkin)
-                                vertices[v].normal = Vector3(normal[0], normal[1], normal[2]).Normalize();
-                            else
-                                vertices[v].normal = worldTransform.TransformDirection(Vector3(normal[0], normal[1], normal[2])).Normalize();
-                        }
-                    }
-                    else if (attribute.type == cgltf_attribute_type_tangent)
-                    {
-                        for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                        {
-                            float tangent[4];
-                            cgltf_accessor_read_float(accessor, v, tangent, 4);
+                        cgltf_attribute& attribute = primitive.attributes[k];
+                        cgltf_accessor* accessor = attribute.data;
 
-                            Vector3 tangentVec;
-                            if (hasSkin)
-                                tangentVec = Vector3(tangent[0], tangent[1], tangent[2]).Normalize();
-                            else
-                                tangentVec = worldTransform.TransformDirection(Vector3(tangent[0], tangent[1], tangent[2])).Normalize();
+                        if (vertices.empty())
+                            vertices.resize(accessor->count);
 
-                            vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, tangent[3]);
-                        }
-                    }
-                    else if (attribute.type == cgltf_attribute_type_texcoord)
-                    {
-                        if (attribute.index == 0)
+                        if (attribute.type == cgltf_attribute_type_position)
                         {
-                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                            const uint8_t* base = AccessorBase(accessor);
+                            size_t stride = AccessorStride(accessor, 3);
+                            if (base)
                             {
-                                float uv[2];
-                                cgltf_accessor_read_float(accessor, v, uv, 2);
-                                vertices[v].texCoord = Vector2(uv[0], uv[1]);
-                            }
-                        }
-                        else if (attribute.index == 1)
-                        {
-                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                            {
-                                float uv[2];
-                                cgltf_accessor_read_float(accessor, v, uv, 2);
-                                vertices[v].texCoord1 = Vector2(uv[0], uv[1]);
-                            }
-                        }
-                    }
-                    else if (attribute.type == cgltf_attribute_type_joints && attribute.index == 0)
-                    {
-                        for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                        {
-                            if (accessor->component_type == cgltf_component_type_r_8u || accessor->component_type == cgltf_component_type_r_16u)
-                            {
-                                cgltf_size offset = accessor->offset + accessor->stride * v;
-                                cgltf_buffer_view* view = accessor->buffer_view;
-                                uint8_t* ptr = (uint8_t*)view->buffer->data + view->offset + offset;
-
-                                if (accessor->component_type == cgltf_component_type_r_8u)
+                                for (size_t v = 0; v < accessor->count; ++v)
                                 {
-                                    for (int c = 0; c < 4; ++c)
-                                        vertices[v].boneIndices[c] = static_cast<float>(ptr[c]);
-                                }
-                                else if (accessor->component_type == cgltf_component_type_r_16u)
-                                {
-                                    uint16_t* ptr16 = (uint16_t*)ptr;
-                                    for (int c = 0; c < 4; ++c)
-                                        vertices[v].boneIndices[c] = static_cast<float>(ptr16[c]);
+                                    const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                    vertices[v].position = hasSkin ? Vector3(p[0], p[1], p[2]) : worldTransform.TransformPoint(Vector3(p[0], p[1], p[2]));
                                 }
                             }
                             else
-                                std::cerr << "[ERROR] JOINTS attribute has invalid component type" << std::endl;
+                            {
+                                for (size_t v = 0; v < accessor->count; ++v)
+                                {
+                                    float raw[3];
+                                    cgltf_accessor_read_float(accessor, v, raw, 3);
+                                    vertices[v].position = hasSkin ? Vector3(raw[0], raw[1], raw[2]) : worldTransform.TransformPoint(Vector3(raw[0], raw[1], raw[2]));
+                                }
+                            }
+                        }
+                        else if (attribute.type == cgltf_attribute_type_normal)
+                        {
+                            const uint8_t* base = AccessorBase(accessor);
+                            size_t stride = AccessorStride(accessor, 3);
+                            if (base)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                    Vector3 normal(p[0], p[1], p[2]);
+                                    vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
+                                }
+                            }
+                            else
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    float raw[3];
+                                    cgltf_accessor_read_float(accessor, v, raw, 3);
+                                    Vector3 normal(raw[0], raw[1], raw[2]);
+                                    vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
+                                }
+                            }
+                        }
+                        else if (attribute.type == cgltf_attribute_type_tangent)
+                        {
+                            const uint8_t* base = AccessorBase(accessor);
+                            size_t stride = AccessorStride(accessor, 4);
+                            if (base)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                    Vector3 tangentVec = hasSkin ? Vector3(p[0], p[1], p[2]) : worldTransform.TransformDirection(Vector3(p[0], p[1], p[2])).Normalize();
+                                    vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, p[3]);
+                                }
+                            }
+                            else
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    float t[4];
+                                    cgltf_accessor_read_float(accessor, v, t, 4);
+                                    Vector3 tangentVec = hasSkin ? Vector3(t[0], t[1], t[2]) : worldTransform.TransformDirection(Vector3(t[0], t[1], t[2])).Normalize();
+                                    vertices[v].tangent = Vector4(tangentVec.x, tangentVec.y, tangentVec.z, t[3]);
+                                }
+                            }
+                        }
+                        else if (attribute.type == cgltf_attribute_type_texcoord)
+                        {
+                            const uint8_t* base = AccessorBase(accessor);
+                            size_t stride = AccessorStride(accessor, 2);
+                            if (attribute.index == 0)
+                            {
+                                if (base)
+                                {
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                        vertices[v].texCoord = Vector2(p[0], p[1]);
+                                    }
+                                }
+                                else
+                                {
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        float uv[2];
+                                        cgltf_accessor_read_float(accessor, v, uv, 2);
+                                        vertices[v].texCoord = Vector2(uv[0], uv[1]);
+                                    }
+                                }
+                            }
+                            else if (attribute.index == 1)
+                            {
+                                if (base)
+                                {
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                        vertices[v].texCoord1 = Vector2(p[0], p[1]);
+                                    }
+                                }
+                                else
+                                {
+                                    for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                    {
+                                        float uv[2];
+                                        cgltf_accessor_read_float(accessor, v, uv, 2);
+                                        vertices[v].texCoord1 = Vector2(uv[0], uv[1]);
+                                    }
+                                }
+                            }
+                        }
+                        else if (attribute.type == cgltf_attribute_type_weights && attribute.index == 0)
+                        {
+                            const uint8_t* base = AccessorBase(accessor);
+                            size_t stride = AccessorStride(accessor, 4);
+                            if (base)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    const float* p = reinterpret_cast<const float*>(base + stride * v);
+                                    for (int c = 0; c < 4; ++c)
+                                        vertices[v].boneWeights[c] = p[c];
+                                }
+                            }
+                            else
+                            {
+                                for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
+                                {
+                                    float weights[4];
+                                    cgltf_accessor_read_float(accessor, v, weights, 4);
+                                    for (int c = 0; c < 4; ++c)
+                                        vertices[v].boneWeights[c] = weights[c];
+                                }
+                            }
                         }
                     }
-                    else if (attribute.type == cgltf_attribute_type_weights && attribute.index == 0)
+
+                    if (hasSkin)
                     {
-                        for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
-                        {
-                            float weights[4];
-                            cgltf_accessor_read_float(accessor, v, weights, 4);
-                            for (int c = 0; c < 4; ++c)
-                                vertices[v].boneWeights[c] = weights[c];
-                        }
+                        for (auto& v : vertices)
+                            NormalizeBoneWeights(v.boneWeights, 4);
                     }
-                }
 
-                // Normalize bone weights
-                for (auto& v : vertices)
-                    NormalizeBoneWeights(v.boneWeights, 4);
-
-                // Load indices
-                if (primitive.indices)
-                {
-                    cgltf_accessor* accessor = primitive.indices;
-                    indices.resize(accessor->count);
-                    for (size_t idx = 0; idx < accessor->count; ++idx)
-                        indices[idx] = static_cast<uint32_t>(cgltf_accessor_read_index(accessor, idx));
-                }
-                else
-                {
-                    indices.resize(vertices.size());
-                    for (size_t i = 0; i < vertices.size(); ++i)
-                        indices[i] = static_cast<uint32_t>(i);
-                }
-            }
-
-            // Load morph targets
-            std::vector<MorphTarget> morphTargets;
-            if (primitive.targets_count > 0)
-            {
-                morphTargets.resize(primitive.targets_count);
-
-                for (size_t t = 0; t < primitive.targets_count; ++t)
-                {
-                    cgltf_morph_target& target = primitive.targets[t];
-                    MorphTarget& morphTarget = morphTargets[t];
-
-                    morphTarget.positionDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
-                    morphTarget.normalDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
-                    morphTarget.tangentDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
-
-                    for (size_t a = 0; a < target.attributes_count; ++a)
+                    // Load indices
+                    if (primitive.indices)
                     {
-                        cgltf_attribute& attr = target.attributes[a];
-                        cgltf_accessor* accessor = attr.data;
+                        cgltf_accessor* accessor = primitive.indices;
+                        indices.resize(accessor->count);
+                        if (!accessor->is_sparse && accessor->buffer_view && accessor->buffer_view->buffer->data)
+                        {
+                            const uint8_t* base = static_cast<const uint8_t*>(accessor->buffer_view->buffer->data)
+                                + accessor->buffer_view->offset + accessor->offset;
 
-                        if (attr.type == cgltf_attribute_type_position)
-                        {
-                            for (size_t v = 0; v < accessor->count && v < morphTarget.positionDeltas.size(); ++v)
+                            if (accessor->component_type == cgltf_component_type_r_32u)
                             {
-                                float delta[3];
-                                cgltf_accessor_read_float(accessor, v, delta, 3);
-                                morphTarget.positionDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
+                                size_t stride = accessor->stride ? accessor->stride : sizeof(uint32_t);
+                                if (stride == sizeof(uint32_t))
+                                    std::memcpy(indices.data(), base, accessor->count * sizeof(uint32_t));
+                                else
+                                    for (size_t i = 0; i < accessor->count; ++i)
+                                        indices[i] = *reinterpret_cast<const uint32_t*>(base + stride * i);
+                            }
+                            else if (accessor->component_type == cgltf_component_type_r_16u)
+                            {
+                                size_t stride = accessor->stride ? accessor->stride : sizeof(uint16_t);
+                                for (size_t i = 0; i < accessor->count; ++i)
+                                    indices[i] = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(base + stride * i));
+                            }
+                            else if (accessor->component_type == cgltf_component_type_r_8u)
+                            {
+                                size_t stride = accessor->stride ? accessor->stride : sizeof(uint8_t);
+                                for (size_t i = 0; i < accessor->count; ++i)
+                                    indices[i] = static_cast<uint32_t>(*(base + stride * i));
+                            }
+                            else
+                            {
+                                for (size_t idx = 0; idx < accessor->count; ++idx)
+                                    indices[idx] = static_cast<uint32_t>(cgltf_accessor_read_index(accessor, idx));
                             }
                         }
-                        else if (attr.type == cgltf_attribute_type_normal)
+                        else
                         {
-                            for (size_t v = 0; v < accessor->count && v < morphTarget.normalDeltas.size(); ++v)
-                            {
-                                float delta[3];
-                                cgltf_accessor_read_float(accessor, v, delta, 3);
-                                morphTarget.normalDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
-                            }
-                        }
-                        else if (attr.type == cgltf_attribute_type_tangent)
-                        {
-                            for (size_t v = 0; v < accessor->count && v < morphTarget.tangentDeltas.size(); ++v)
-                            {
-                                float delta[3];
-                                cgltf_accessor_read_float(accessor, v, delta, 3);
-                                morphTarget.tangentDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
-                            }
+                            for (size_t idx = 0; idx < accessor->count; ++idx)
+                                indices[idx] = static_cast<uint32_t>(cgltf_accessor_read_index(accessor, idx));
                         }
                     }
-
-                    // Set name if available
-                    if (meshData.target_names && t < meshData.target_names_count && meshData.target_names[t])
-                        morphTarget.name = meshData.target_names[t];
                     else
-                        morphTarget.name = "Target_" + std::to_string(t);
-                }
-
-                mesh->SetMorphTargets(morphTargets);
-
-                // Set initial morph weights from node
-                if (node && node->weights_count > 0)
-                {
-                    std::vector<float> weights(node->weights_count);
-                    for (size_t w = 0; w < node->weights_count; ++w)
-                        weights[w] = node->weights[w];
-
-                    mesh->SetMorphWeights(weights);
-                }
-                else if (primitive.targets_count > 0)
-                {
-                    std::vector<float> weights(primitive.targets_count, 0.0f);
-                    mesh->SetMorphWeights(weights);
-                }
-            }
-
-            // Load or create material
-            Material* material = new Material();
-            material->SetShader(s_defaultShader);
-
-            if (primitive.material)
-            {
-                auto it = materialMap.find(primitive.material);
-                if (it == materialMap.end())
-                {
-                    auto& pbr = primitive.material->pbr_metallic_roughness;
-
-                    material->SetAlbedo(Color(pbr.base_color_factor[0] * 255, pbr.base_color_factor[1] * 255, pbr.base_color_factor[2] * 255, pbr.base_color_factor[3] * 255));
-                    material->SetMetallic(pbr.metallic_factor);
-                    material->SetRoughness(pbr.roughness_factor);
-                    material->SetEmissive(Color(primitive.material->emissive_factor[0] * 255, primitive.material->emissive_factor[1] * 255, primitive.material->emissive_factor[2] * 255, 1.0f));
-
-                    materialMap[primitive.material] = material;
-
-                    loadAndSetMap(pbr.base_color_texture.texture, MaterialMapType::Albedo, primitive.material);
-                    loadAndSetMap(pbr.metallic_roughness_texture.texture, MaterialMapType::MetallicRoughness, primitive.material);
-                    loadAndSetMap(primitive.material->normal_texture.texture, MaterialMapType::Normal, primitive.material);
-                    loadAndSetMap(primitive.material->occlusion_texture.texture, MaterialMapType::AO, primitive.material);
-                    loadAndSetMap(primitive.material->emissive_texture.texture, MaterialMapType::Emissive, primitive.material);
-
-                    // Check which texcoord set is used for AO and Emissive
-                    bool aoUsesTexCoord1 = false;
-                    bool emissiveUsesTexCoord1 = false;
-
-                    if (primitive.material->occlusion_texture.texture && primitive.material->occlusion_texture.texcoord == 1)
-                        aoUsesTexCoord1 = true;
-
-                    if (primitive.material->emissive_texture.texture && primitive.material->emissive_texture.texcoord == 1)
-                        emissiveUsesTexCoord1 = true;
-
-                    // Set shader parameters for UV selection if needed
-                    if (aoUsesTexCoord1 || emissiveUsesTexCoord1)
                     {
-                        material->SetShaderParam("u_MaterialFlags2",
-                            { aoUsesTexCoord1 ? 1.0f : 0.0f,
-                            emissiveUsesTexCoord1 ? 1.0f : 0.0f,
-                            0.0f, 0.0f });
+                        indices.resize(vertices.size());
+                        for (size_t i = 0; i < vertices.size(); ++i)
+                            indices[i] = static_cast<uint32_t>(i);
+                    }
+                }
+
+                // Load morph targets
+                std::vector<MorphTarget> morphTargets;
+                if (primitive.targets_count > 0)
+                {
+                    morphTargets.resize(primitive.targets_count);
+
+                    for (size_t t = 0; t < primitive.targets_count; ++t)
+                    {
+                        cgltf_morph_target& target = primitive.targets[t];
+                        MorphTarget& morphTarget = morphTargets[t];
+
+                        morphTarget.positionDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
+                        morphTarget.normalDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
+                        morphTarget.tangentDeltas.resize(vertices.size(), Vector3(0.0f, 0.0f, 0.0f));
+
+                        for (size_t a = 0; a < target.attributes_count; ++a)
+                        {
+                            cgltf_attribute& attr = target.attributes[a];
+                            cgltf_accessor* accessor = attr.data;
+
+                            if (attr.type == cgltf_attribute_type_position)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < morphTarget.positionDeltas.size(); ++v)
+                                {
+                                    float delta[3];
+                                    cgltf_accessor_read_float(accessor, v, delta, 3);
+                                    morphTarget.positionDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
+                                }
+                            }
+                            else if (attr.type == cgltf_attribute_type_normal)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < morphTarget.normalDeltas.size(); ++v)
+                                {
+                                    float delta[3];
+                                    cgltf_accessor_read_float(accessor, v, delta, 3);
+                                    morphTarget.normalDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
+                                }
+                            }
+                            else if (attr.type == cgltf_attribute_type_tangent)
+                            {
+                                for (size_t v = 0; v < accessor->count && v < morphTarget.tangentDeltas.size(); ++v)
+                                {
+                                    float delta[3];
+                                    cgltf_accessor_read_float(accessor, v, delta, 3);
+                                    morphTarget.tangentDeltas[v] = Vector3(delta[0], delta[1], delta[2]);
+                                }
+                            }
+                        }
+
+                        // Set name if available
+                        if (meshData.target_names && t < meshData.target_names_count && meshData.target_names[t])
+                            morphTarget.name = meshData.target_names[t];
+                        else
+                            morphTarget.name = "Target_" + std::to_string(t);
                     }
 
+                    mesh->SetMorphTargets(morphTargets);
+
+                    // Set initial morph weights from node
+                    if (node && node->weights_count > 0)
+                    {
+                        std::vector<float> weights(node->weights_count);
+                        for (size_t w = 0; w < node->weights_count; ++w)
+                            weights[w] = node->weights[w];
+
+                        mesh->SetMorphWeights(weights);
+                    }
+                    else if (primitive.targets_count > 0)
+                    {
+                        std::vector<float> weights(primitive.targets_count, 0.0f);
+                        mesh->SetMorphWeights(weights);
+                    }
+                }
+
+                // Load or create material
+                Material* material = new Material();
+                material->SetShader(s_defaultShader);
+
+                if (primitive.material)
+                {
+                    auto it = materialMap.find(primitive.material);
+                    if (it == materialMap.end())
+                    {
+                        auto& pbr = primitive.material->pbr_metallic_roughness;
+
+                        material->SetAlbedo(Color(pbr.base_color_factor[0] * 255, pbr.base_color_factor[1] * 255, pbr.base_color_factor[2] * 255, pbr.base_color_factor[3] * 255));
+                        material->SetMetallic(pbr.metallic_factor);
+                        material->SetRoughness(pbr.roughness_factor);
+                        material->SetEmissive(Color(primitive.material->emissive_factor[0] * 255, primitive.material->emissive_factor[1] * 255, primitive.material->emissive_factor[2] * 255, 1.0f));
+
+                        materialMap[primitive.material] = material;
+
+                        loadAndSetMap(pbr.base_color_texture.texture, MaterialMapType::Albedo, primitive.material);
+                        loadAndSetMap(pbr.metallic_roughness_texture.texture, MaterialMapType::MetallicRoughness, primitive.material);
+                        loadAndSetMap(primitive.material->normal_texture.texture, MaterialMapType::Normal, primitive.material);
+                        loadAndSetMap(primitive.material->occlusion_texture.texture, MaterialMapType::AO, primitive.material);
+                        loadAndSetMap(primitive.material->emissive_texture.texture, MaterialMapType::Emissive, primitive.material);
+
+                        // Check which texcoord set is used for AO and Emissive
+                        bool aoUsesTexCoord1 = false;
+                        bool emissiveUsesTexCoord1 = false;
+
+                        if (primitive.material->occlusion_texture.texture && primitive.material->occlusion_texture.texcoord == 1)
+                            aoUsesTexCoord1 = true;
+
+                        if (primitive.material->emissive_texture.texture && primitive.material->emissive_texture.texcoord == 1)
+                            emissiveUsesTexCoord1 = true;
+
+                        // Set shader parameters for UV selection if needed
+                        if (aoUsesTexCoord1 || emissiveUsesTexCoord1)
+                        {
+                            material->SetShaderParam("u_MaterialFlags2",
+                                { aoUsesTexCoord1 ? 1.0f : 0.0f,
+                                emissiveUsesTexCoord1 ? 1.0f : 0.0f,
+                                0.0f, 0.0f });
+                        }
+
+                    }
+                    else
+                    {
+                        delete material;
+                        material = it->second;
+                    }
                 }
                 else
-                {
-                    delete material;
-                    material = it->second;
-                }
-            }
-            else
-                materialMap[nullptr] = material;
+                    materialMap[nullptr] = material;
 
-            mesh->SetMaterial(material);
-            mesh->SetVertices(vertices);
-            mesh->SetIndices(indices);
+                mesh->SetMaterial(material);
+                mesh->SetVertices(std::move(vertices));
+                mesh->SetIndices(std::move(indices));
 
-            if (!mergeMeshes)
-                mesh->Upload();
+                if (!mergeMeshes)
+                    mesh->Upload();
 
-            return mesh;
-        };
+                return mesh;
+            };
 
         // Process scene nodes
         std::function<void(cgltf_node*, const Matrix4&)> ProcessNode;
         ProcessNode = [&](cgltf_node* node, const Matrix4& parentTransform)
-        {
-            Matrix4 local;
-            cgltf_node_transform_local(node, local.m);
-
-            Matrix4 worldTransform = parentTransform * local;
-
-            if (node->mesh)
             {
-                bool hasSkin = (node->skin != nullptr);
+                Matrix4 local;
+                cgltf_node_transform_local(node, local.m);
 
-                for (size_t j = 0; j < node->mesh->primitives_count; ++j)
+                Matrix4 worldTransform = parentTransform * local;
+
+                if (node->mesh)
                 {
-                    cgltf_primitive& primitive = node->mesh->primitives[j];
-                    auto mesh = processPrimitive(*node->mesh, primitive, worldTransform, hasSkin, node);
+                    bool hasSkin = (node->skin != nullptr);
 
-                    if (mesh)
-                        model->AddMesh(mesh);
+                    for (size_t j = 0; j < node->mesh->primitives_count; ++j)
+                    {
+                        cgltf_primitive& primitive = node->mesh->primitives[j];
+                        auto mesh = processPrimitive(*node->mesh, primitive, worldTransform, hasSkin, node);
+
+                        if (mesh)
+                            model->AddMesh(mesh);
+                    }
                 }
-            }
 
-            for (size_t i = 0; i < node->children_count; ++i)
-                ProcessNode(node->children[i], worldTransform);
-        };
+                for (size_t i = 0; i < node->children_count; ++i)
+                    ProcessNode(node->children[i], worldTransform);
+            };
 
         // Process the selected scene
         cgltf_scene* scene = &data->scenes[targetScene];
@@ -1268,6 +1562,17 @@ namespace cx
             {
                 for (auto& mesh : model->GetMeshes())
                     mesh->Upload();
+            }
+        }
+
+        // Wait for any unconsumed texture decode futures before freeing GLTF data
+        for (auto& pair : textureFutures)
+        {
+            if (pair.second.valid())
+            {
+                DecodedImage decoded = pair.second.get();
+                if (decoded.valid)
+                    stbi_image_free(decoded.pixels);
             }
         }
 
