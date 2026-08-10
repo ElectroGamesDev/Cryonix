@@ -7,6 +7,7 @@
 #include "Window.h"
 #include <bgfx.h>
 #include <chrono>
+#include <unordered_set>
 
 namespace cx
 {
@@ -41,7 +42,7 @@ namespace cx
 
     struct ProfileMarker
     {
-        std::string name = nullptr;
+        std::string name;
         float cpuTime = 0.0f;
         float gpuTime = 0.0f;
     };
@@ -51,7 +52,6 @@ namespace cx
         Window* window;
         int width;
         int height;
-        bgfx::ProgramHandle defaultProgram; // Todo: Should likely remove this since default shader is in Shader.h
         uint16_t currentViewId = 0;
         uint32_t clearColor = 0x000000ff;
         float clearDepth = 1.0f;
@@ -71,6 +71,9 @@ namespace cx
         std::chrono::steady_clock::time_point currentMarkerStart;
         std::string currentMarkerName;
         Shader* lastShader;
+
+        // Views whose rect was set explicitly via SetViewport this frame
+        std::unordered_set<uint16_t> viewportOverriddenViews;
     };
     extern RendererState* s_renderer;
 
@@ -133,6 +136,7 @@ namespace cx
     void Clear(const Color& color, float depth = 1.0f);
     void SetViewport(int x, int y, int width, int height);
     void SetViewTransform(const Matrix4& view, const Matrix4& projection);
+    void SetCameraPosition(const Vector3& position);
 
     void DrawMesh(Mesh* mesh, const Matrix4& transform, const std::vector<Matrix4>* bones = nullptr);
     void DrawMesh(Mesh* mesh, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
@@ -163,8 +167,6 @@ namespace cx
 
     int GetViewWidth();
     int GetViewHeight();
-
-    static bgfx::ProgramHandle CreateDefaultShader();
 
     // Blend Mode
     void SetBlendMode(BlendMode mode);

@@ -23,13 +23,55 @@ namespace cx
 
     Shader* LoadDefaultShader(std::string_view vertexPath, std::string_view fragmentPath)
     {
-        if (s_defaultShader)
-            delete s_defaultShader;
+        Shader* shader = new Shader();
 
-        s_defaultShader = new Shader();
-        s_defaultShader->Load(vertexPath, fragmentPath);
+        if (!shader->Load(vertexPath, fragmentPath))
+        {
+            delete shader;
+            shader = Shader::CreateDefault();
+
+            if (!shader)
+            {
+                std::cerr << "[ERROR] LoadDefaultShader - failed to load \"" << vertexPath << "\" and \"" << fragmentPath << "\", and no embedded default shader is available for the current renderer." << std::endl;
+                return nullptr;
+            }
+        }
+
+        s_defaultShader = shader;
 
         return s_defaultShader;
+    }
+
+    Shader* Shader::CreateDefault()
+    {
+        bgfx::RendererType::Enum type = bgfx::getRendererType();
+
+        bgfx::ShaderHandle vs = bgfx::createEmbeddedShader(GetEmbeddedShaders(), type, "vs_default");
+        bgfx::ShaderHandle fs = bgfx::createEmbeddedShader(GetEmbeddedShaders(), type, "fs_default");
+
+        if (!bgfx::isValid(vs) || !bgfx::isValid(fs))
+        {
+            if (bgfx::isValid(vs))
+                bgfx::destroy(vs);
+            if (bgfx::isValid(fs))
+                bgfx::destroy(fs);
+
+            std::cerr << "[ERROR] Shader::CreateDefault - no embedded default shader is available for renderer " << bgfx::getRendererName(type) << std::endl;
+            return nullptr;
+        }
+
+        Shader* shader = new Shader();
+        shader->m_impl->vertex = vs;
+        shader->m_impl->fragment = fs;
+        shader->m_impl->program = bgfx::createProgram(vs, fs, false);
+
+        if (!bgfx::isValid(shader->m_impl->program))
+        {
+            delete shader;
+            return nullptr;
+        }
+
+        return shader;
     }
     Shader* GetDefaultShader()
     {
@@ -165,7 +207,7 @@ namespace cx
             return false;
         }
 
-        m_impl->program = bgfx::createProgram(m_impl->vertex, m_impl->fragment, true);
+        m_impl->program = bgfx::createProgram(m_impl->vertex, m_impl->fragment, false);
         if (!bgfx::isValid(m_impl->program))
         {
             std::cerr << "Shader::Load: failed to create program" << std::endl;
@@ -439,7 +481,7 @@ namespace cx
         if (!m_impl)
             return;
 
-        thread_local float tmp[4] = { v, 0.0f, 0.0f, 0.0f };
+        float tmp[4] = { v, 0.0f, 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
 
         if (bgfx::isValid(h))
@@ -452,7 +494,7 @@ namespace cx
         if (!m_impl)
             return;
 
-        thread_local float tmp[4] = { static_cast<float>(v), 0.0f, 0.0f, 0.0f };
+        float tmp[4] = { static_cast<float>(v), 0.0f, 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
 
         if (bgfx::isValid(h))
@@ -465,7 +507,7 @@ namespace cx
         if (!m_impl)
             return;
 
-        thread_local float tmp[4] = { v2[0], v2[1], 0.0f, 0.0f };
+        float tmp[4] = { v2[0], v2[1], 0.0f, 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
 
         if (bgfx::isValid(h))
@@ -478,7 +520,7 @@ namespace cx
         if (!m_impl)
             return;
 
-        thread_local float tmp[4] = { v3[0], v3[1], v3[2], 0.0f };
+        float tmp[4] = { v3[0], v3[1], v3[2], 0.0f };
         bgfx::UniformHandle h = GetOrCreateUniform(name, UniformType::Vec4, 1);
 
         if (bgfx::isValid(h))

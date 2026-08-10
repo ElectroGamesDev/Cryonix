@@ -79,9 +79,9 @@ namespace cx
         std::filesystem::path path = filePath;
 
         if (path.extension() == ".gltf" || path.extension() == ".glb")
-            return LoadAnimations(filePath);
+            return LoadAnimationsFromGLTF(filePath);
         else if (path.extension() == ".fbx")
-            return LoadAnimations(filePath);
+            return LoadAnimationsFromFBX(filePath);
 
         std::cout << "[ERROR] Failed to load animations for \"" << filePath << "\". This model format may not support animations." << std::endl;
 

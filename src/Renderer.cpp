@@ -13,6 +13,9 @@ namespace cx
 {
     static bgfx::UniformHandle u_BoneMatrices = BGFX_INVALID_HANDLE;
     static bgfx::UniformHandle u_IsSkinned = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_View = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_Proj = BGFX_INVALID_HANDLE;
+    static bgfx::UniformHandle u_CameraPos = BGFX_INVALID_HANDLE;
     static std::unordered_map<InstanceBatchKey, InstanceBatch, InstanceBatchKeyHasher> s_instanceBatches;
 
     RendererState* s_renderer = nullptr;
@@ -72,12 +75,14 @@ namespace cx
             return false;
         }
 
-        // Todo: Likely remove this and CreateDefautlShader()
-        // Create default shader
-        //s_renderer->defaultProgram = CreateDefaultShader();
-
         u_BoneMatrices = bgfx::createUniform("u_BoneMatrices", bgfx::UniformType::Mat4, 128); // This is enough for most models, but to configure it, it would also need to be set in the shader.
         u_IsSkinned = bgfx::createUniform("u_IsSkinned", bgfx::UniformType::Vec4);
+        u_View = bgfx::createUniform("u_View", bgfx::UniformType::Mat4);
+        u_Proj = bgfx::createUniform("u_Proj", bgfx::UniformType::Mat4);
+        u_CameraPos = bgfx::createUniform("u_CameraPos", bgfx::UniformType::Vec4);
+
+        if (!s_defaultShader)
+            s_defaultShader = Shader::CreateDefault();
 
         return true;
     }
@@ -86,15 +91,20 @@ namespace cx
     {
         if (s_renderer)
         {
-            // Todo: Probably remove this
-            //if (bgfx::isValid(s_renderer->defaultProgram))
-            //    bgfx::destroy(s_renderer->defaultProgram);
-
             if (bgfx::isValid(u_BoneMatrices))
                 bgfx::destroy(u_BoneMatrices);
 
             if (bgfx::isValid(u_IsSkinned))
                 bgfx::destroy(u_IsSkinned);
+
+            if (bgfx::isValid(u_View))
+                bgfx::destroy(u_View);
+
+            if (bgfx::isValid(u_Proj))
+                bgfx::destroy(u_Proj);
+
+            if (bgfx::isValid(u_CameraPos))
+                bgfx::destroy(u_CameraPos);
 
             bgfx::shutdown();
             delete s_renderer;
@@ -117,6 +127,7 @@ namespace cx
 
         s_renderer->currentViewId = 0;
         s_renderer->window->GetWindowSize(s_renderer->width, s_renderer->height);
+        s_renderer->viewportOverriddenViews.clear();
     }
 
     void EndFrame()
@@ -169,24 +180,41 @@ namespace cx
         s_renderer->clearColor = rgba;
         s_renderer->clearDepth = depth;
 
-        if (s_renderer->currentViewId != 0)
-            bgfx::setViewClear(s_renderer->currentViewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, rgba, depth, 0);
+        bgfx::setViewClear(s_renderer->currentViewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, rgba, depth, 0);
     }
 
     void SetViewport(int x, int y, int width, int height)
     {
-        if (!s_renderer || s_renderer->currentViewId == 0)
+        if (!s_renderer)
             return;
 
         bgfx::setViewRect(s_renderer->currentViewId, uint16_t(x), uint16_t(y), uint16_t(width), uint16_t(height));
+        s_renderer->viewportOverriddenViews.insert(s_renderer->currentViewId);
     }
 
     void SetViewTransform(const Matrix4& view, const Matrix4& projection)
     {
-        if (!s_renderer || s_renderer->currentViewId == 0)
+        if (!s_renderer)
             return;
 
         bgfx::setViewTransform(s_renderer->currentViewId, view.m, projection.m);
+
+        if (bgfx::isValid(u_View))
+            bgfx::setUniform(u_View, view.m);
+
+        if (bgfx::isValid(u_Proj))
+            bgfx::setUniform(u_Proj, projection.m);
+    }
+
+    void SetCameraPosition(const Vector3& position)
+    {
+        if (!s_renderer)
+            return;
+
+        float pos[4] = { position.x, position.y, position.z, 1.0f };
+
+        if (bgfx::isValid(u_CameraPos))
+            bgfx::setUniform(u_CameraPos, pos);
     }
 
     uint64_t GetBlendState(BlendMode mode)
@@ -233,8 +261,18 @@ namespace cx
 
     void DrawMesh(Mesh* mesh, const Matrix4& transform, const std::vector<Matrix4>* bones)
     {
-        if (s_renderer->currentViewId == 0 || !mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
+        if (!mesh || !mesh->IsValid() || !mesh->GetMaterial() || !mesh->GetMaterial()->GetShader())
             return;
+
+        if (s_renderer->currentViewId == 0)
+        {
+            static bool warnedNoCamera = false;
+            if (!warnedNoCamera)
+            {
+                std::cerr << "[WARNING] Drawing without an active camera (view 0). Call Camera::Begin() (or BeginCamera) before drawing to use the camera's view/projection." << std::endl;
+                warnedNoCamera = true;
+            }
+        }
 
         // Allocate instance data buffer for single instance
         bgfx::InstanceDataBuffer idb;
@@ -252,7 +290,10 @@ namespace cx
         mesh->ApplyMorphTargets(); // Todo: It would be best to blend weights in the shader
         mesh->UpdateBuffer();
 
-        bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
+        if (mesh->UsesDynamicBuffer())
+            bgfx::setVertexBuffer(0, mesh->GetDynamicVertexBuffer());
+        else
+            bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
         bgfx::setIndexBuffer(mesh->GetIndexBuffer());
         bgfx::setInstanceDataBuffer(&idb);
 
@@ -350,18 +391,19 @@ namespace cx
             for (size_t i = 0; i < model->GetMeshes().size(); ++i)
             {
                 const auto& mesh = model->GetMeshes()[i];
+                if (!mesh)
+                    continue;
+
                 Matrix4 meshTransform = transform;
 
-                if (i < nodeTransforms.size() && nodeTransforms[i] != Matrix4::Identity())
-                    meshTransform = transform * nodeTransforms[i];
+                int nodeIndex = mesh->GetNodeIndex();
+                if (nodeIndex < 0)
+                    nodeIndex = static_cast<int>(i);
 
-                //for (size_t i = 0; i < numBones; ++i)
-                //{
-                //    const Matrix4& mat = (*bones)[i];
-                //    memcpy(&boneData[i * 16], mat.m, 16 * sizeof(float));
-                //}
+                if (nodeIndex >= 0 && nodeIndex < static_cast<int>(nodeTransforms.size()) && nodeTransforms[nodeIndex] != Matrix4::Identity())
+                    meshTransform = transform * nodeTransforms[nodeIndex];
 
-                DrawMesh(mesh.get(), meshTransform, bones);
+                DrawMesh(mesh.get(), meshTransform);
             }
         }
         else
@@ -394,9 +436,7 @@ namespace cx
         if (!model)
             return;
 
-        //model->UpdateTransformMatrix();
-        for (const auto& mesh : model->GetMeshes())
-            DrawModel(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
+        DrawModel(model, model->GetPosition(), model->GetRotationQuat(), model->GetScale());
     }
 
     void DrawMeshInstanced(Mesh* mesh, const std::vector<Matrix4>& transforms, const std::vector<Matrix4>* boneMatrices)
@@ -440,7 +480,10 @@ namespace cx
             std::memcpy(idb.data, &transforms[instanceOffset], batchSize * sizeof(Matrix4));
 
             // Bind buffers
-            bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
+            if (mesh->UsesDynamicBuffer())
+                bgfx::setVertexBuffer(0, mesh->GetDynamicVertexBuffer());
+            else
+                bgfx::setVertexBuffer(0, mesh->GetVertexBuffer());
             bgfx::setIndexBuffer(mesh->GetIndexBuffer());
             bgfx::setInstanceDataBuffer(&idb);
 
@@ -596,11 +639,6 @@ namespace cx
         return s_renderer ? s_renderer->height : 0;
     }
 
-    bgfx::ProgramHandle CreateDefaultShader()
-    {
-        return BGFX_INVALID_HANDLE;
-    }
-
     // Blend Mode
 
     void SetBlendMode(BlendMode mode)
@@ -745,7 +783,7 @@ namespace cx
 
     void EndProfileMarker()
     {
-        if (!s_renderer || !s_renderer->profilerEnabled || !s_renderer->currentMarkerName.empty())
+        if (!s_renderer || !s_renderer->profilerEnabled || s_renderer->currentMarkerName.empty())
             return;
 
         auto endTime = std::chrono::high_resolution_clock::now();
@@ -757,7 +795,7 @@ namespace cx
         marker.gpuTime = 0.0f;
 
         s_renderer->profileMarkers.push_back(marker);
-        s_renderer->currentMarkerName = nullptr;
+        s_renderer->currentMarkerName.clear();
     }
 
     void SetProfilerEnabled(bool enabled)

@@ -25,6 +25,8 @@ int main()
     //cx::Model* model = cx::LoadModel("models/gltf/Sponza/source/scene.glb");
     //cx::Model* model = cx::LoadModel("models/OBJ/sibenik/sibenik.obj");
     cx::Model* model = cx::LoadModel("models/Animation/Character.glb");
+    if (!model)
+        std::cerr << "[WARNING] Failed to load \"models/Animation/Character.glb\". Rendering primitives only." << std::endl;
 
     // Primitives
     cx::Model primitive = cx::GenQuadModel();
@@ -44,13 +46,15 @@ int main()
     //model->PlayAnimationByName("animation_AnimatedCube", true);
 
     // Animation with layers
-    int walkLayer = model->GetAnimator()->CreateLayer("Walk", 0);
-    model->GetAnimator()->PlayAnimationOnLayer(walkLayer, model->GetAnimation(1), true);
+    int walkLayer = 0;
+    if (model && model->GetAnimator() && model->GetAnimationCount() > 1)
+    {
+        walkLayer = model->GetAnimator()->CreateLayer("Walk", 0);
+        model->GetAnimator()->PlayAnimationOnLayer(walkLayer, model->GetAnimation(1), true);
 
-    //model->SetPosition({0,1,0});
-    //model->SetRotation({ 0, 90, 0 });
-    model->SetRotation({ 90, 180, 0 });
-    model->SetScale({0.01f, 0.01f, 0.01f});
+        model->SetRotation({ 90, 180, 0 });
+        model->SetScale({0.01f, 0.01f, 0.01f});
+    }
 
     //for (const auto& mesh : model->GetMeshes())
     //{
@@ -69,63 +73,20 @@ int main()
 
 
     // Lighting:
-    
-    // Lighting can currently be set like this:
-    //float lightingControl[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x=1.0 enables lighting
-    //cx::GetDefaultShader()->SetUniform("u_LightingControl", lightingControl);
+    if (cx::GetDefaultShader())
+    {
+        float lightingControl[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x=1.0 enables lighting
+        cx::GetDefaultShader()->SetUniform("u_LightingControl", lightingControl);
 
-    //// Setup lighting uniforms
-    //float lightDir[3] = { -0.5f, -1.0f, -0.3f };
-    //pbrShader->SetUniform("u_LightDir", lightDir);
+        float lightDir[3] = { -0.5f, -1.0f, -0.3f };
+        cx::GetDefaultShader()->SetUniform("u_LightDir", lightDir);
 
-    //float lightColor[4] = { 1.0f, 1.0f, 1.0f, 3.0f }; // White light, intensity 3.0
-    //pbrShader->SetUniform("u_LightColor", lightColor);
+        float lightColor[4] = { 1.0f, 1.0f, 1.0f, 3.0f }; // White light, intensity 3.0
+        cx::GetDefaultShader()->SetUniform("u_LightColor", lightColor);
 
-    //float ambientColor[3] = { 0.03f, 0.03f, 0.03f }; // Subtle ambient
-    //pbrShader->SetUniform("u_AmbientColor", ambientColor);
-
-    //// Setup material flags (this is automatic in Material::ApplyPBRUniforms)
-    //float flags0[4] = { 1.0f, 1.0f, 0.0f, 0.0f }; // hasAlbedo, hasNormal
-    //pbrShader->SetUniform("u_MaterialFlags0", flags0);
-
-    //float flags1[4] = { 1.0f, 1.0f, 0.0f, 0.0f }; // hasMetallicRoughness, hasAO
-    //pbrShader->SetUniform("u_MaterialFlags1", flags1);
-
-    // But eventually add a way to easily setup lights (assuming the shader supports the uniforms)
-
-    // Todo: Need to make Sounds, Music, and AudioStream return a pointer. Sounds work fine with a copy, but Music doesn't. Not too sure about AudioStream. Pointers are needed to cleanup automatically anyways
-    // Sounds
-    //cx::Sound shot = cx::LoadSound("sounds/test.mp3");
-    //cx::PlaySound(shot);
-
-    // Load and play music
-    //cx::Music music = cx::LoadMusicStream("sounds/test.mp3");
-    //cx::SetMusicLooping(music, true);
-    //cx::PlayMusicStream(music);
-
-    // 3D Audio
-    //cx::SetSoundPosition(shot, 10.0f, 0.0f, 5.0f);
-    //cx::SetAudioListenerPosition(0.0f, 0.0f, 0.0f);
-
-    // Effects
-    //cx::SetMusicEffect(music, cx::AUDIO_EFFECT_LOWPASS, 500.0f);
-
-    // Old Camera setup
-    //float view[16];  // View matrix
-    //float proj[16];  // Projection matrix
-
-    //// Camera position and orientation
-    //bx::Vec3 cameraPos = { 0.0f, 2.0f, -5.0f };   // In front of origin
-    //bx::Vec3 target = { 0.0f, 0.0f, 0.0f };    // Look at origin
-    //bx::Vec3 up = { 0.0f, 1.0f, 0.0f };    // Up vector
-
-    //bx::mtxLookAt(view, cameraPos, target, up);
-    //bx::mtxProj(proj, 60.0f, float(config.windowWidth) / config.windowHeight, 0.1f, 1000.0f, bgfx::getCaps()->homogeneousDepth);
-
-    // Create uniform handles for camera matrices (assuming Cryonix exposes this)
-    //static bgfx::UniformHandle u_View = bgfx::createUniform("u_View", bgfx::UniformType::Mat4);
-    //static bgfx::UniformHandle u_Proj = bgfx::createUniform("u_Proj", bgfx::UniformType::Mat4);
-    //static bgfx::UniformHandle u_CamPos = bgfx::createUniform("u_CameraPos", bgfx::UniformType::Vec4);
+        float ambientColor[3] = { 0.25f, 0.25f, 0.25f }; // Subtle ambient
+        cx::GetDefaultShader()->SetUniform("u_AmbientColor", ambientColor);
+    }
 
     cx::Clear(cx::Color(48, 48, 48, 255)); // This sets the background color. It can go anywhere after cl:Init() and can be used after camera.Begin() to let multiple cameras have different backgrounds
     bgfx::setDebug(BGFX_DEBUG_STATS | BGFX_DEBUG_TEXT);
@@ -173,27 +134,28 @@ int main()
         if (camRotation.x < -89.0f) camRotation.x = -89.0f;
 
         // Apply rotation
-        camera.Rotate(camRotation);
+        camera.SetRotation(camRotation);
 
         // Rendering
         cx::BeginCamera(camera);
 
-        cx::GetDefaultShader()->SetUniform("u_CameraPos", { camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z });
-
         static float elapsed = 0.0f;
         elapsed += cx::GetFrameTime();
-        if (elapsed > 5.0f)
+        if (model && elapsed > 5.0f)
         {
-            model->GetAnimator()->CrossfadeToAnimation(model->GetAnimation(0), 1, true, walkLayer);
+            if (model->GetAnimation(0))
+                model->GetAnimator()->CrossfadeToAnimation(model->GetAnimation(0), 1, true, walkLayer);
             elapsed = -10000;
         }
 
         // Animations
-        model->UpdateAnimation(cx::GetFrameTime());
+        if (model)
+            model->UpdateAnimation(cx::GetFrameTime());
 
         //model->Rotate(0.0f, deltaTime * 90.0f, 0.0f); // Todo: Add delta time
 
-        cx::DrawModel(model);
+        if (model)
+            cx::DrawModel(model);
 
         //cx::DrawModel(&primitive);
 

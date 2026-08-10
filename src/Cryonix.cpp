@@ -97,9 +97,6 @@ namespace cx
         // Initialize Basis Transcoder
         basist::basisu_transcoder_init();
 
-        // Initialize primitives
-        //InitPrimitives(); // The default shader isn't created yet
-
         // Initialize renderer
         if (!InitRenderer(s_cryonix->window, config))
         {
@@ -201,7 +198,6 @@ namespace cx
         // it's not that important as the platform should clean up when the program is closed and in most cases, the user should be cleaning up anyway
 
         // Todo: Use unordered_map instead of Vector, it will be faster
-        Model::s_models.clear();
         for (int i = static_cast<int>(Model::s_models.size()) - 1; i >= 0; --i)
             Model::s_models[i]->Destroy();
 

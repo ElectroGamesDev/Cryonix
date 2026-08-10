@@ -53,9 +53,11 @@ namespace cx
         void Destroy();
 
         bgfx::VertexBufferHandle GetVertexBuffer() const { return m_vbh; }
+        bgfx::DynamicVertexBufferHandle GetDynamicVertexBuffer() const { return m_dvbh; }
         bgfx::IndexBufferHandle GetIndexBuffer() const { return m_ibh; }
+        bool UsesDynamicBuffer() const { return bgfx::isValid(m_dvbh); }
         void UpdateBuffer();
-        bool IsValid() const { return bgfx::isValid(m_vbh) && bgfx::isValid(m_ibh); }
+        bool IsValid() const { return (bgfx::isValid(m_vbh) || bgfx::isValid(m_dvbh)) && bgfx::isValid(m_ibh); }
 
         void SetMorphTargets(const std::vector<MorphTarget>& targets) { m_dynamic = true; m_morphTargets = targets; }
         void SetMorphWeights(const std::vector<float>& weights) { m_morphWeights = weights; }
@@ -70,11 +72,15 @@ namespace cx
         void SetSkinned(bool skinned);
         bool IsSkinned() const { return m_skinned; }
 
+        void SetNodeIndex(int index) { m_nodeIndex = index; }
+        int GetNodeIndex() const { return m_nodeIndex; }
+
     private:
         std::vector<Vertex> m_vertices;
         std::vector<Vertex> m_verticesOriginal;
         std::vector<uint32_t> m_indices;
         bgfx::VertexBufferHandle m_vbh;
+        bgfx::DynamicVertexBufferHandle m_dvbh;
         bgfx::IndexBufferHandle m_ibh;
         std::vector<MorphTarget> m_morphTargets;
         std::vector<float> m_morphWeights;
@@ -82,5 +88,6 @@ namespace cx
         bool m_uploaded;
         bool m_skinned;
         Material* m_material;
+        int m_nodeIndex = -1;
     };
 }

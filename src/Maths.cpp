@@ -341,27 +341,27 @@ namespace cx
 
     Vector3 Quaternion::ToEuler() const
     {
+        // Matches FromEuler(yaw, pitch, roll) = qY * qX * qZ, i.e. R = Ry(yaw) * Rx(pitch) * Rz(roll).
+        // For that composition: m[9] = -sin(pitch), m[8] = sin(yaw)*cos(pitch),
+        // m[10] = cos(yaw)*cos(pitch), m[1] = cos(pitch)*sin(roll), m[5] = cos(pitch)*cos(roll).
         Matrix4 mat = ToMatrix();
-        float r32 = mat.m[6];
+        float sinPitch = std::max(-1.0f, std::min(1.0f, -mat.m[9]));
+        float eps = 1e-6f;
+        float cosPitch = std::sqrtf(std::max(0.0f, 1.0f - sinPitch * sinPitch));
         float phi_rad; // roll (z)
         float theta_rad; // pitch (x)
         float psi_rad; // yaw (y)
-        float eps = 1e-6f;
-        float cos_phi = std::sqrtf(1.0f - r32 * r32);
-        if (cos_phi < eps)
+        if (cosPitch < eps)
         {
-            phi_rad = (PI / 2.0f) * (r32 > 0.0f ? 1.0f : -1.0f);
-            theta_rad = 0.0f; // Arbitrary
-            if (r32 > 0.0f)
-                psi_rad = std::atan2f(mat.m[1], mat.m[0]) - theta_rad;
-            else
-                psi_rad = std::atan2f(mat.m[1], mat.m[0]) + theta_rad;
+            theta_rad = (PI / 2.0f) * (sinPitch > 0.0f ? 1.0f : -1.0f);
+            phi_rad = 0.0f;
+            psi_rad = std::atan2f(-mat.m[2], mat.m[0]);
         }
         else
         {
-            phi_rad = std::asinf(r32);
-            theta_rad = std::atan2f(-mat.m[2] / cos_phi, mat.m[10] / cos_phi);
-            psi_rad = std::atan2f(-mat.m[4] / cos_phi, mat.m[5] / cos_phi);
+            theta_rad = std::asinf(sinPitch);
+            phi_rad = std::atan2f(mat.m[1] / cosPitch, mat.m[5] / cosPitch);
+            psi_rad = std::atan2f(mat.m[8] / cosPitch, mat.m[10] / cosPitch);
         }
         return Vector3(
             theta_rad * 180.0f / PI, // pitch (x)
@@ -431,14 +431,14 @@ namespace cx
         {
             float s = sqrtf(trace + 1.0f) * 2.0f;
             q.w = 0.25f * s;
-            q.x = (m.m[9] - m.m[6]) / s;
-            q.y = (m.m[2] - m.m[8]) / s;
-            q.z = (m.m[4] - m.m[1]) / s;
+            q.x = (m.m[6] - m.m[9]) / s;
+            q.y = (m.m[8] - m.m[2]) / s;
+            q.z = (m.m[1] - m.m[4]) / s;
         }
         else if ((m.m[0] > m.m[5]) && (m.m[0] > m.m[10]))
         {
             float s = sqrtf(1.0f + m.m[0] - m.m[5] - m.m[10]) * 2.0f;
-            q.w = (m.m[9] - m.m[6]) / s;
+            q.w = (m.m[6] - m.m[9]) / s;
             q.x = 0.25f * s;
             q.y = (m.m[1] + m.m[4]) / s;
             q.z = (m.m[2] + m.m[8]) / s;
@@ -446,7 +446,7 @@ namespace cx
         else if (m.m[5] > m.m[10])
         {
             float s = sqrtf(1.0f + m.m[5] - m.m[0] - m.m[10]) * 2.0f;
-            q.w = (m.m[2] - m.m[8]) / s;
+            q.w = (m.m[8] - m.m[2]) / s;
             q.x = (m.m[1] + m.m[4]) / s;
             q.y = 0.25f * s;
             q.z = (m.m[6] + m.m[9]) / s;
@@ -454,7 +454,7 @@ namespace cx
         else
         {
             float s = sqrtf(1.0f + m.m[10] - m.m[0] - m.m[5]) * 2.0f;
-            q.w = (m.m[4] - m.m[1]) / s;
+            q.w = (m.m[1] - m.m[4]) / s;
             q.x = (m.m[2] + m.m[8]) / s;
             q.y = (m.m[6] + m.m[9]) / s;
             q.z = 0.25f * s;

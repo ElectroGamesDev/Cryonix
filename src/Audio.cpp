@@ -11,6 +11,25 @@
 
 namespace cx
 {
+    // Wraps an inner data source (audio buffer/decoder) and applies the owner's
+    // AudioProcessor (if any) to every read. Lives as long as the sound plays.
+    struct EffectDataSource
+    {
+        ma_data_source_base ds;
+        ma_data_source* inner = nullptr;
+        AudioProcessor* processor = nullptr;
+        ma_uint32 channels = 0;
+    };
+
+    void ProcessEcho(EchoEffect& echo, float* buffer, size_t frameCount, unsigned int channels);
+    void ProcessReverb(ReverbEffect& reverb, float* buffer, size_t frameCount, unsigned int channels);
+
+    struct ActiveSoundInstance
+    {
+        std::shared_ptr<ma_sound> sound;
+        EffectDataSource effectSource;
+    };
+
     // Internal audio system state
     struct AudioSystem
     {
@@ -27,13 +46,13 @@ namespace cx
         std::vector<float> recordingBuffer;
         bool isRecording = false;
 
-        // Active sounds tracking - using unique IDs
-        std::unordered_map<size_t, std::shared_ptr<ma_sound>> activeSounds;
-        size_t nextSoundId = 0;
+        // Active sounds tracking - per sound, so each sound's instances are controlled independently
+        std::unordered_map<const Sound*, std::vector<ActiveSoundInstance>> activeSounds;
 
         // Effect processors
         std::unordered_map<const Music*, AudioProcessor> musicProcessors;
         std::unordered_map<const Sound*, AudioProcessor> soundProcessors;
+        std::unordered_map<const Music*, EffectDataSource> musicEffectSources;
 
         // Device enumeration
         ma_device_info* playbackDeviceInfos = nullptr;
@@ -42,11 +61,183 @@ namespace cx
         ma_uint32 captureDeviceCount = 0;
 
         // FFT data for spectrum analysis
-        std::vector<float> fftInput;
+        std::vector<float> spectrumRing;
+        size_t spectrumWritePos = 0;
+        ma_uint32 spectrumChannels = 0;
         std::vector<std::complex<float>> fftOutput;
     };
 
     static AudioSystem g_audioSystem;
+
+    // Effect data source: wraps an inner data source and applies the sound's active effect on read.
+    ma_result EffectDataSourceRead(ma_data_source* pDataSource, void* pFramesOut,
+        ma_uint64 frameCount, ma_uint64* pFramesRead)
+    {
+        EffectDataSource* self = (EffectDataSource*)pDataSource;
+
+        ma_result result = ma_data_source_read_pcm_frames(self->inner, pFramesOut, frameCount, pFramesRead);
+        if (result != MA_SUCCESS || !pFramesRead || *pFramesRead == 0)
+            return result;
+
+        AudioProcessor& processor = *self->processor;
+        if (processor.enabled)
+        {
+            float* buffer = (float*)pFramesOut;
+            size_t frames = (size_t)*pFramesRead;
+
+            switch (processor.activeEffect)
+            {
+                case AUDIO_EFFECT_LOWPASS:
+                    ma_lpf_process_pcm_frames(&processor.lpf, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_HIGHPASS:
+                    ma_hpf_process_pcm_frames(&processor.hpf, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_BANDPASS:
+                    ma_bpf_process_pcm_frames(&processor.bpf, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_NOTCH:
+                    ma_notch2_process_pcm_frames(&processor.notch, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_PEAKING:
+                    ma_peak2_process_pcm_frames(&processor.peak, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_LOSHELF:
+                    ma_loshelf2_process_pcm_frames(&processor.loshelf, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_HISHELF:
+                    ma_hishelf2_process_pcm_frames(&processor.hishelf, buffer, buffer, frames);
+                    break;
+                case AUDIO_EFFECT_ECHO:
+                    ProcessEcho(processor.echo, buffer, frames, self->channels);
+                    break;
+                case AUDIO_EFFECT_REVERB:
+                    ProcessReverb(processor.reverb, buffer, frames, self->channels);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    ma_result EffectDataSourceSeek(ma_data_source* pDataSource, ma_uint64 frameIndex)
+    {
+        EffectDataSource* self = (EffectDataSource*)pDataSource;
+        return ma_data_source_seek_to_pcm_frame(self->inner, frameIndex);
+    }
+
+    ma_result EffectDataSourceGetDataFormat(ma_data_source* pDataSource, ma_format* pFormat,
+        ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap)
+    {
+        EffectDataSource* self = (EffectDataSource*)pDataSource;
+        return ma_data_source_get_data_format(self->inner, pFormat, pChannels, pSampleRate, pChannelMap, channelMapCap);
+    }
+
+    ma_result EffectDataSourceGetCursor(ma_data_source* pDataSource, ma_uint64* pCursor)
+    {
+        EffectDataSource* self = (EffectDataSource*)pDataSource;
+        return ma_data_source_get_cursor_in_pcm_frames(self->inner, pCursor);
+    }
+
+    ma_result EffectDataSourceGetLength(ma_data_source* pDataSource, ma_uint64* pLength)
+    {
+        EffectDataSource* self = (EffectDataSource*)pDataSource;
+        return ma_data_source_get_length_in_pcm_frames(self->inner, pLength);
+    }
+
+    static ma_data_source_vtable g_effectDataSourceVTable =
+    {
+        EffectDataSourceRead,
+        EffectDataSourceSeek,
+        EffectDataSourceGetDataFormat,
+        EffectDataSourceGetCursor,
+        EffectDataSourceGetLength,
+        nullptr, // onSetLooping
+        0 // flags
+    };
+
+    void InitEffectDataSource(EffectDataSource& fx, ma_data_source* inner, AudioProcessor* processor, ma_uint32 channels)
+    {
+        ma_data_source_config dsConfig = ma_data_source_config_init();
+        dsConfig.vtable = &g_effectDataSourceVTable;
+        ma_data_source_init(&dsConfig, &fx.ds);
+        fx.inner = inner;
+        fx.processor = processor;
+        fx.channels = channels;
+    }
+
+    void SpectrumCaptureCallback(void* pUserData, float* pFramesOut, ma_uint64 frameCount)
+    {
+        (void)pUserData;
+
+        AudioSystem& sys = g_audioSystem;
+        if (sys.spectrumRing.empty() || sys.spectrumChannels == 0)
+            return;
+
+        size_t channelCount = sys.spectrumChannels;
+        size_t ringSize = sys.spectrumRing.size();
+
+        for (ma_uint64 f = 0; f < frameCount; ++f)
+        {
+            const float* frame = pFramesOut + f * channelCount;
+            float mono = 0.0f;
+            for (size_t c = 0; c < channelCount; ++c)
+                mono += frame[c];
+
+            sys.spectrumRing[sys.spectrumWritePos] = mono / (float)channelCount;
+            sys.spectrumWritePos = (sys.spectrumWritePos + 1) % ringSize;
+        }
+    }
+
+    void PruneFinishedSounds(const Sound& sound)
+    {
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        std::vector<ActiveSoundInstance>& instances = it->second;
+        for (auto instanceIt = instances.begin(); instanceIt != instances.end();)
+        {
+            if (instanceIt->sound && !ma_sound_is_playing(instanceIt->sound.get()))
+            {
+                ma_sound_uninit(instanceIt->sound.get());
+                instanceIt = instances.erase(instanceIt);
+            }
+            else
+                ++instanceIt;
+        }
+
+        if (instances.empty())
+            g_audioSystem.activeSounds.erase(it);
+    }
+
+    void PruneAllFinishedSounds()
+    {
+        for (auto it = g_audioSystem.activeSounds.begin(); it != g_audioSystem.activeSounds.end();)
+        {
+            std::vector<ActiveSoundInstance>& instances = it->second;
+            bool erasedAny = false;
+
+            for (auto instanceIt = instances.begin(); instanceIt != instances.end();)
+            {
+                if (instanceIt->sound && !ma_sound_is_playing(instanceIt->sound.get()))
+                {
+                    ma_sound_uninit(instanceIt->sound.get());
+                    instanceIt = instances.erase(instanceIt);
+                    erasedAny = true;
+                }
+                else
+                    ++instanceIt;
+            }
+
+            if (erasedAny && instances.empty())
+                it = g_audioSystem.activeSounds.erase(it);
+            else
+                ++it;
+        }
+    }
 
     // FFT implementation for spectrum analysis
     void FFT(std::vector<std::complex<float>>& data)
@@ -93,6 +284,9 @@ namespace cx
     // Process echo effect
     void ProcessEcho(EchoEffect& echo, float* buffer, size_t frameCount, unsigned int channels)
     {
+        if (echo.delayBuffer.empty())
+            return;
+
         for (size_t i = 0; i < frameCount * channels; i++)
         {
             float input = buffer[i];
@@ -108,6 +302,18 @@ namespace cx
     // Process reverb effect (Freeverb-style)
     void ProcessReverb(ReverbEffect& reverb, float* buffer, size_t frameCount, unsigned int channels)
     {
+        for (int c = 0; c < 4; c++)
+        {
+            if (reverb.combBuffers[c].empty())
+                return;
+        }
+
+        for (int a = 0; a < 2; a++)
+        {
+            if (reverb.allpassBuffers[a].empty())
+                return;
+        }
+
         const int combLengths[4] = { 1116, 1188, 1277, 1356 };
         const int allpassLengths[2] = { 556, 441 };
 
@@ -185,6 +391,8 @@ namespace cx
         engineConfig.channels = config.channels;
         engineConfig.periodSizeInFrames = config.bufferSizeInFrames;
         engineConfig.noAutoStart = MA_FALSE;
+        engineConfig.onProcess = SpectrumCaptureCallback;
+        engineConfig.pProcessUserData = nullptr;
 
         result = ma_engine_init(&engineConfig, &g_audioSystem.engine);
         if (result != MA_SUCCESS)
@@ -193,6 +401,11 @@ namespace cx
             ma_context_uninit(&g_audioSystem.context);
             return false;
         }
+
+        // Spectrum capture state
+        g_audioSystem.spectrumChannels = ma_engine_get_channels(&g_audioSystem.engine);
+        g_audioSystem.spectrumRing.assign(8192, 0.0f);
+        g_audioSystem.spectrumWritePos = 0;
 
         // Set default listener
         ma_engine_listener_set_position(&g_audioSystem.engine, 0, 0.0f, 0.0f, 0.0f);
@@ -213,14 +426,18 @@ namespace cx
         // Stop and clean all active sounds
         for (auto& pair : g_audioSystem.activeSounds)
         {
-            if (pair.second)
-                ma_sound_uninit(pair.second.get());
+            for (auto& instance : pair.second)
+            {
+                if (instance.sound)
+                    ma_sound_uninit(instance.sound.get());
+            }
         }
         g_audioSystem.activeSounds.clear();
 
         // Clean processors
         g_audioSystem.musicProcessors.clear();
         g_audioSystem.soundProcessors.clear();
+        g_audioSystem.musicEffectSources.clear();
 
         // Stop recording
         if (g_audioSystem.isRecording)
@@ -411,6 +628,18 @@ namespace cx
         if (!sound.valid)
             return;
 
+        // Stop and release any active instances of this sound
+        auto activeIt = g_audioSystem.activeSounds.find(&sound);
+        if (activeIt != g_audioSystem.activeSounds.end())
+        {
+            for (auto& instance : activeIt->second)
+            {
+                if (instance.sound)
+                    ma_sound_uninit(instance.sound.get());
+            }
+            g_audioSystem.activeSounds.erase(activeIt);
+        }
+
         ma_audio_buffer_uninit(&sound.audioBuffer);
 
         if (sound.ownsData && sound.pcmData)
@@ -431,23 +660,28 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
+        PruneFinishedSounds(sound);
+
+        ActiveSoundInstance instance = {};
+        InitEffectDataSource(instance.effectSource,
+            const_cast<ma_audio_buffer*>(&sound.audioBuffer),
+            &g_audioSystem.soundProcessors[&sound],
+            sound.channels);
+
         auto maSound = std::make_shared<ma_sound>();
 
-        ma_uint32 flags = MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_NO_SPATIALIZATION;
-
-        ma_audio_buffer* buffer = const_cast<ma_audio_buffer*>(&sound.audioBuffer);
         ma_result result = ma_sound_init_from_data_source(&g_audioSystem.engine,
-            buffer,
-            flags, nullptr, maSound.get());
+            &instance.effectSource.ds, 0, nullptr, maSound.get());
 
-        if (result == MA_SUCCESS)
+        if (result != MA_SUCCESS)
         {
-            ma_sound_start(maSound.get());
-            size_t id = g_audioSystem.nextSoundId++;
-            g_audioSystem.activeSounds[id] = maSound;
-        }
-        else
             std::cout << "Audio Error: Failed to play sound" << std::endl;
+            return;
+        }
+
+        ma_sound_start(maSound.get());
+        instance.sound = maSound;
+        g_audioSystem.activeSounds[&sound].push_back(std::move(instance));
     }
 
     void PlaySoundMulti(const Sound& sound)
@@ -460,14 +694,14 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        // Stop all instances
-        auto it = g_audioSystem.activeSounds.begin();
-        while (it != g_audioSystem.activeSounds.end())
-        {
-            if (ma_sound_is_playing(it->second.get()))
-                ma_sound_stop(it->second.get());
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
 
-            ++it;
+        for (auto& instance : it->second)
+        {
+            if (instance.sound && ma_sound_is_playing(instance.sound.get()))
+                ma_sound_stop(instance.sound.get());
         }
     }
 
@@ -476,10 +710,14 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
         {
-            if (ma_sound_is_playing(pair.second.get()))
-                ma_sound_stop(pair.second.get());
+            if (instance.sound && ma_sound_is_playing(instance.sound.get()))
+                ma_sound_stop(instance.sound.get());
         }
     }
 
@@ -488,8 +726,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_start(pair.second.get());
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_start(instance.sound.get());
+        }
     }
 
     bool IsSoundPlaying(const Sound& sound)
@@ -497,9 +742,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return false;
 
-        for (auto& pair : g_audioSystem.activeSounds)
+        PruneFinishedSounds(sound);
+
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return false;
+
+        for (auto& instance : it->second)
         {
-            if (ma_sound_is_playing(pair.second.get()))
+            if (instance.sound && ma_sound_is_playing(instance.sound.get()))
                 return true;
         }
 
@@ -513,8 +764,15 @@ namespace cx
             return;
 
         volume = std::clamp(volume, 0.0f, 1.0f);
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_volume(pair.second.get(), volume);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_volume(instance.sound.get(), volume);
+        }
     }
 
     void SetSoundPitch(const Sound& sound, float pitch)
@@ -523,8 +781,15 @@ namespace cx
             return;
 
         pitch = std::max(0.1f, pitch);
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_pitch(pair.second.get(), pitch);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_pitch(instance.sound.get(), pitch);
+        }
     }
 
     void SetSoundPan(const Sound& sound, float pan)
@@ -533,8 +798,15 @@ namespace cx
             return;
 
         pan = std::clamp(pan, 0.0f, 1.0f);
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_pan(pair.second.get(), pan);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_pan(instance.sound.get(), pan);
+        }
     }
 
     // Music Loading
@@ -554,32 +826,40 @@ namespace cx
             return music;
         }
 
-        // Initialize streaming sound
-        ma_uint32 flags = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION;
-        ma_result result = ma_sound_init_from_file(&g_audioSystem.engine, fileName.c_str(),
-            flags, nullptr, nullptr, &music.sound);
+        // Create decoder for playback and length/format queries
+        music.decoder = new ma_decoder();
+        ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 0, 0);
+        ma_result result = ma_decoder_init_file(fileName.c_str(), &decoderConfig, music.decoder);
 
         if (result != MA_SUCCESS)
         {
             std::cout << "Audio Error: Failed to load music stream: " << fileName << std::endl;
+            delete music.decoder;
+            music.decoder = nullptr;
             return music;
         }
 
-        // Create separate decoder for length/format queries
-        music.decoder = new ma_decoder();
-        ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 0, 0);
-        result = ma_decoder_init_file(fileName.c_str(), &decoderConfig, music.decoder);
+        music.sampleRate = music.decoder->outputSampleRate;
+        music.channels = music.decoder->outputChannels;
 
-        if (result == MA_SUCCESS)
+        // Initialize streaming sound from the decoder so effects can be applied
+        ma_uint32 flags = MA_SOUND_FLAG_NO_SPATIALIZATION;
+
+        EffectDataSource& fx = g_audioSystem.musicEffectSources[&music];
+        InitEffectDataSource(fx, music.decoder, &g_audioSystem.musicProcessors[&music], music.channels);
+
+        result = ma_sound_init_from_data_source(&g_audioSystem.engine, &fx.ds,
+            flags, nullptr, &music.sound);
+
+        if (result != MA_SUCCESS)
         {
-            music.sampleRate = music.decoder->outputSampleRate;
-            music.channels = music.decoder->outputChannels;
-        }
-        else
-        {
-            std::cout << "Audio Warning: Failed to create decoder for queries" << std::endl;
+            std::cout << "Audio Error: Failed to load music stream: " << fileName << std::endl;
+            ma_decoder_uninit(music.decoder);
             delete music.decoder;
             music.decoder = nullptr;
+            g_audioSystem.musicEffectSources.erase(&music);
+            g_audioSystem.musicProcessors.erase(&music);
+            return music;
         }
 
         music.valid = true;
@@ -615,6 +895,7 @@ namespace cx
         }
 
         g_audioSystem.musicProcessors.erase(&music);
+        g_audioSystem.musicEffectSources.erase(&music);
 
         music.valid = false;
     }
@@ -1078,8 +1359,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_position(pair.second.get(), x, y, z);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_position(instance.sound.get(), x, y, z);
+        }
     }
 
     void SetSoundVelocity(const Sound& sound, float x, float y, float z)
@@ -1087,8 +1375,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_velocity(pair.second.get(), x, y, z);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_velocity(instance.sound.get(), x, y, z);
+        }
     }
 
     void SetSoundDirection(const Sound& sound, float x, float y, float z)
@@ -1096,8 +1391,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_direction(pair.second.get(), x, y, z);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_direction(instance.sound.get(), x, y, z);
+        }
     }
 
     void SetSoundCone(const Sound& sound, float innerAngle, float outerAngle, float outerGain)
@@ -1105,8 +1407,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_cone(pair.second.get(), innerAngle, outerAngle, outerGain);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_cone(instance.sound.get(), innerAngle, outerAngle, outerGain);
+        }
     }
 
     void SetSoundAttenuation(const Sound& sound, ma_attenuation_model model,
@@ -1115,12 +1424,19 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
         {
-            ma_sound_set_attenuation_model(pair.second.get(), model);
-            ma_sound_set_min_distance(pair.second.get(), minDistance);
-            ma_sound_set_max_distance(pair.second.get(), maxDistance);
-            ma_sound_set_rolloff(pair.second.get(), rolloff);
+            if (!instance.sound)
+                continue;
+
+            ma_sound_set_attenuation_model(instance.sound.get(), model);
+            ma_sound_set_min_distance(instance.sound.get(), minDistance);
+            ma_sound_set_max_distance(instance.sound.get(), maxDistance);
+            ma_sound_set_rolloff(instance.sound.get(), rolloff);
         }
     }
 
@@ -1141,8 +1457,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_spatialization_enabled(pair.second.get(), enable ? MA_TRUE : MA_FALSE);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_spatialization_enabled(instance.sound.get(), enable ? MA_TRUE : MA_FALSE);
+        }
     }
 
     void SetSoundDopplerFactor(const Sound& sound, float factor)
@@ -1150,8 +1473,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_doppler_factor(pair.second.get(), factor);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_doppler_factor(instance.sound.get(), factor);
+        }
     }
 
     void SetSoundPositioning(const Sound& sound, ma_positioning mode)
@@ -1159,8 +1489,15 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
-        for (auto& pair : g_audioSystem.activeSounds)
-            ma_sound_set_positioning(pair.second.get(), mode);
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it == g_audioSystem.activeSounds.end())
+            return;
+
+        for (auto& instance : it->second)
+        {
+            if (instance.sound)
+                ma_sound_set_positioning(instance.sound.get(), mode);
+        }
     }
 
     // 3D Audio Music
@@ -1249,6 +1586,21 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return;
 
+        // Stop and release active instances while reconfiguring so the audio
+        // thread never touches a partially-resized effect buffer
+        size_t instanceCount = 0;
+        auto activeIt = g_audioSystem.activeSounds.find(&sound);
+        if (activeIt != g_audioSystem.activeSounds.end())
+        {
+            instanceCount = activeIt->second.size();
+            for (auto& instance : activeIt->second)
+            {
+                if (instance.sound)
+                    ma_sound_uninit(instance.sound.get());
+            }
+            g_audioSystem.activeSounds.erase(activeIt);
+        }
+
         AudioProcessor& processor = g_audioSystem.soundProcessors[&sound];
         processor.activeEffect = effect;
         processor.enabled = true;
@@ -1308,7 +1660,8 @@ namespace cx
             case AUDIO_EFFECT_ECHO:
             {
                 // param1 = delay time in seconds, param2 = feedback amount
-                processor.echo.delaySamples = (unsigned int)(param1 * sampleRate * channels);
+                float delaySeconds = std::max(0.0f, std::min(param1, 5.0f));
+                processor.echo.delaySamples = (unsigned int)(delaySeconds * sampleRate * channels);
                 processor.echo.delayBuffer.resize(processor.echo.delaySamples, 0.0f);
                 processor.echo.writePos = 0;
                 processor.echo.feedback = std::clamp(param2, 0.0f, 0.95f);
@@ -1344,6 +1697,10 @@ namespace cx
                 processor.enabled = false;
                 break;
         }
+
+        // Re-create any instances that were playing so the new effect takes hold
+        for (size_t i = 0; i < instanceCount; ++i)
+            PlaySound(sound);
     }
 
     void RemoveSoundEffect(const Sound& sound)
@@ -1351,7 +1708,14 @@ namespace cx
         if (!sound.valid)
             return;
 
-        g_audioSystem.soundProcessors.erase(&sound);
+        // Reset the processor in place rather than erasing, since playing
+        // instances still hold a pointer to it on the audio thread
+        auto it = g_audioSystem.soundProcessors.find(&sound);
+        if (it != g_audioSystem.soundProcessors.end())
+        {
+            it->second.activeEffect = AUDIO_EFFECT_NONE;
+            it->second.enabled = false;
+        }
     }
 
     // Audio Effects Music
@@ -1360,14 +1724,17 @@ namespace cx
         if (!g_audioSystem.initialized || !music.valid)
             return;
 
+        // Rebuild the sound so the audio thread never touches a partially-resized effect buffer
+        bool wasPlaying = music.isPlaying && ma_sound_is_playing(&music.sound);
+        ma_sound_uninit(&music.sound);
+
         AudioProcessor& processor = g_audioSystem.musicProcessors[&music];
         processor.activeEffect = effect;
         processor.enabled = true;
 
-        ma_format format;
-        ma_uint32 sampleRate;
-        ma_uint32 channels;
-        ma_sound_get_data_format(&music.sound, &format, &channels, &sampleRate, nullptr, 0);
+        ma_format format = ma_format_f32;
+        ma_uint32 sampleRate = music.sampleRate;
+        ma_uint32 channels = music.channels;
 
         switch (effect)
         {
@@ -1419,7 +1786,8 @@ namespace cx
             }
             case AUDIO_EFFECT_ECHO:
             {
-                processor.echo.delaySamples = (unsigned int)(param1 * sampleRate * channels);
+                float delaySeconds = std::max(0.0f, std::min(param1, 5.0f));
+                processor.echo.delaySamples = (unsigned int)(delaySeconds * sampleRate * channels);
                 processor.echo.delayBuffer.resize(processor.echo.delaySamples, 0.0f);
                 processor.echo.writePos = 0;
                 processor.echo.feedback = std::clamp(param2, 0.0f, 0.95f);
@@ -1452,6 +1820,31 @@ namespace cx
                 processor.enabled = false;
                 break;
         }
+
+        // Re-initialize the sound with the effect data source
+        EffectDataSource& fx = g_audioSystem.musicEffectSources[&music];
+        InitEffectDataSource(fx, music.decoder, &processor, channels);
+
+        ma_uint32 flags = MA_SOUND_FLAG_NO_SPATIALIZATION;
+        if (ma_sound_init_from_data_source(&g_audioSystem.engine, &fx.ds, flags, nullptr, &music.sound) == MA_SUCCESS)
+        {
+            ma_sound_set_volume(&music.sound, music.volume);
+            ma_sound_set_pitch(&music.sound, music.pitch);
+            ma_sound_set_pan(&music.sound, music.pan);
+            ma_sound_set_looping(&music.sound, music.looping ? MA_TRUE : MA_FALSE);
+
+            if (wasPlaying)
+            {
+                ma_sound_start(&music.sound);
+                music.isPaused = false;
+            }
+        }
+        else
+        {
+            std::cout << "Audio Error: Failed to reinitialize music with effect" << std::endl;
+            music.sound = {};
+            music.isPlaying = false;
+        }
     }
 
     void RemoveMusicEffect(Music& music)
@@ -1459,7 +1852,14 @@ namespace cx
         if (!music.valid)
             return;
 
-        g_audioSystem.musicProcessors.erase(&music);
+        // Reset the processor in place rather than erasing, since a playing
+        // sound still holds a pointer to it on the audio thread
+        auto it = g_audioSystem.musicProcessors.find(&music);
+        if (it != g_audioSystem.musicProcessors.end())
+        {
+            it->second.activeEffect = AUDIO_EFFECT_NONE;
+            it->second.enabled = false;
+        }
     }
 
     // Audio Recording
@@ -1681,9 +2081,9 @@ namespace cx
         if (!g_audioSystem.initialized || !sound.valid)
             return 0.0f;
 
-        // Return volume from first active instance
-        for (auto& pair : g_audioSystem.activeSounds)
-            return ma_sound_get_volume(pair.second.get());
+        auto it = g_audioSystem.activeSounds.find(&sound);
+        if (it != g_audioSystem.activeSounds.end() && !it->second.empty() && it->second.front().sound)
+            return ma_sound_get_volume(it->second.front().sound.get());
 
         return 0.0f;
     }
@@ -1698,42 +2098,59 @@ namespace cx
 
     std::vector<float> GetAudioSpectrumData(int sampleCount)
     {
-        std::vector<float> spectrum(sampleCount, 0.0f);
+        std::vector<float> spectrum(sampleCount > 0 ? sampleCount : 0, 0.0f);
 
-        if (!g_audioSystem.initialized)
+        if (!g_audioSystem.initialized || sampleCount <= 0)
             return spectrum;
+
+        // Release finished one-shot instances (spectrum queries run per-frame in visualizers)
+        PruneAllFinishedSounds();
 
         // Ensure sample count is power of 2 for FFT
         int fftSize = 1;
         while (fftSize < sampleCount)
             fftSize *= 2;
 
-        // Capture current audio output 
-        // Todo: We need to use the audio pipeline
-        if (g_audioSystem.fftInput.size() != fftSize)
+        if (fftSize > static_cast<int>(g_audioSystem.spectrumRing.size()))
+            fftSize = static_cast<int>(g_audioSystem.spectrumRing.size());
+
+        if (fftSize < 2)
+            return spectrum;
+
+        // Pull the most recent fftSize mono samples captured from the engine's output
+        std::vector<float> samples(fftSize, 0.0f);
         {
-            g_audioSystem.fftInput.resize(fftSize, 0.0f);
-            g_audioSystem.fftOutput.resize(fftSize);
+            size_t ringSize = g_audioSystem.spectrumRing.size();
+            size_t pos = g_audioSystem.spectrumWritePos;
+            for (int i = 0; i < fftSize; ++i)
+            {
+                pos = (pos + ringSize - 1) % ringSize;
+                samples[i] = g_audioSystem.spectrumRing[pos];
+            }
         }
 
-        // Convert to complex numbers
-        for (int i = 0; i < fftSize; i++)
+        if (g_audioSystem.fftOutput.size() != static_cast<size_t>(fftSize))
+            g_audioSystem.fftOutput.resize(fftSize);
+
+        // Apply a Hann window and convert to complex numbers
+        float windowEnergy = 0.0f;
+        for (int i = 0; i < fftSize; ++i)
         {
-            if (i < (int)g_audioSystem.fftInput.size())
-                g_audioSystem.fftOutput[i] = std::complex<float>(g_audioSystem.fftInput[i], 0.0f);
-            else
-                g_audioSystem.fftOutput[i] = std::complex<float>(0.0f, 0.0f);
+            float w = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * i / (fftSize - 1)));
+            windowEnergy += w;
+            g_audioSystem.fftOutput[i] = std::complex<float>(samples[i] * w, 0.0f);
         }
 
         // Perform FFT
         FFT(g_audioSystem.fftOutput);
 
-        // Calculate magnitude spectrum
+        // Single-sided magnitude spectrum, normalized by the window energy
+        float scale = windowEnergy > 0.0f ? 2.0f / windowEnergy : 0.0f;
         for (int i = 0; i < sampleCount && i < fftSize / 2; i++)
         {
             float real = g_audioSystem.fftOutput[i].real();
             float imag = g_audioSystem.fftOutput[i].imag();
-            spectrum[i] = sqrtf(real * real + imag * imag) / fftSize;
+            spectrum[i] = sqrtf(real * real + imag * imag) * scale;
         }
 
         return spectrum;

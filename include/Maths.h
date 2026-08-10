@@ -119,6 +119,15 @@ namespace cx
             *this = *this * q;
             return *this;
         }
+        Quaternion operator*(float scalar) const { return { x * scalar, y * scalar, z * scalar, w * scalar }; }
+        Quaternion& operator*=(float scalar) {
+            x *= scalar;
+            y *= scalar;
+            z *= scalar;
+            w *= scalar;
+            return *this;
+        }
+        friend Quaternion operator*(float scalar, const Quaternion& q) { return { q.x * scalar, q.y * scalar, q.z * scalar, q.w * scalar }; }
         bool operator==(const Quaternion& other) const { return x == other.x && y == other.y && z == other.z && w == other.w; }
         bool operator!=(const Quaternion& other) const { return !(*this == other); }
         Quaternion operator-() const { return { -x, -y, -z, -w }; }

@@ -78,8 +78,6 @@ namespace cx
                 [&](AnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* joint)
                 {
                     channel.translations.resize(channel.times.size());
-                    channel.rotations.resize(channel.times.size(), Quaternion(0, 0, 0, 1));
-                    channel.scales.resize(channel.times.size(), Vector3(1, 1, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {
@@ -103,8 +101,6 @@ namespace cx
                 [&](AnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* joint)
                 {
                     channel.rotations.resize(channel.times.size());
-                    channel.translations.resize(channel.times.size(), Vector3(0, 0, 0));
-                    channel.scales.resize(channel.times.size(), Vector3(1, 1, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {
@@ -117,31 +113,10 @@ namespace cx
                                 ((float*)&euler)[c] = (float)ufbx_evaluate_curve(prop->anim_value->curves[c], time, ((float*)&prop->anim_value->default_value)[c]);
                         }
 
-                        Quaternion q;
-                        switch (joint->rotation_order)
-                        {
-                        case UFBX_ROTATION_ORDER_XYZ:
-                            q = Quaternion::FromEuler(euler.x, euler.y, euler.z);
-                            break;
-                        case UFBX_ROTATION_ORDER_XZY:
-                            q = Quaternion::FromEuler(euler.x, euler.z, euler.y);
-                            break;
-                        case UFBX_ROTATION_ORDER_YXZ:
-                            q = Quaternion::FromEuler(euler.y, euler.x, euler.z); break;
-                        case UFBX_ROTATION_ORDER_YZX: q = Quaternion::FromEuler(euler.y, euler.z, euler.x);
-                            break;
-                        case UFBX_ROTATION_ORDER_ZXY:
-                            q = Quaternion::FromEuler(euler.z, euler.x, euler.y);
-                            break;
-                        case UFBX_ROTATION_ORDER_ZYX:
-                            q = Quaternion::FromEuler(euler.z, euler.y, euler.x);
-                            break;
-                        default:
-                            q = Quaternion::FromEuler(euler.x, euler.y, euler.z);
-                            break;
-                        }
-
-                        channel.rotations[t] = q;
+                        // Decompose per the joint's rotation order; ufbx uses the same
+                        // convention for the bind pose, so the animation matches it
+                        ufbx_quat q = ufbx_euler_to_quat(euler, joint->rotation_order);
+                        channel.rotations[t] = Quaternion(q.x, q.y, q.z, q.w);
                     }
                 });
 
@@ -152,8 +127,6 @@ namespace cx
                 [&](AnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* joint)
                 {
                     channel.scales.resize(channel.times.size());
-                    channel.translations.resize(channel.times.size(), Vector3(0, 0, 0));
-                    channel.rotations.resize(channel.times.size(), Quaternion(0, 0, 0, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {
@@ -220,8 +193,6 @@ namespace cx
                 [&](NodeAnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* node)
                 {
                     channel.translations.resize(channel.times.size());
-                    channel.rotations.resize(channel.times.size(), Quaternion(0, 0, 0, 1));
-                    channel.scales.resize(channel.times.size(), Vector3(1, 1, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {
@@ -245,8 +216,6 @@ namespace cx
                 [&](NodeAnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* node)
                 {
                     channel.rotations.resize(channel.times.size());
-                    channel.translations.resize(channel.times.size(), Vector3(0, 0, 0));
-                    channel.scales.resize(channel.times.size(), Vector3(1, 1, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {
@@ -259,31 +228,10 @@ namespace cx
                                 ((float*)&euler)[c] = (float)ufbx_evaluate_curve(prop->anim_value->curves[c], time, ((float*)&prop->anim_value->default_value)[c]);
                         }
 
-                        Quaternion q;
-                        switch (node->rotation_order)
-                        {
-                        case UFBX_ROTATION_ORDER_XYZ:
-                            q = Quaternion::FromEuler(euler.x, euler.y, euler.z);
-                            break;
-                        case UFBX_ROTATION_ORDER_XZY:
-                            q = Quaternion::FromEuler(euler.x, euler.z, euler.y);
-                            break;
-                        case UFBX_ROTATION_ORDER_YXZ:
-                            q = Quaternion::FromEuler(euler.y, euler.x, euler.z); break;
-                        case UFBX_ROTATION_ORDER_YZX: q = Quaternion::FromEuler(euler.y, euler.z, euler.x);
-                            break;
-                        case UFBX_ROTATION_ORDER_ZXY:
-                            q = Quaternion::FromEuler(euler.z, euler.x, euler.y);
-                            break;
-                        case UFBX_ROTATION_ORDER_ZYX:
-                            q = Quaternion::FromEuler(euler.z, euler.y, euler.x);
-                            break;
-                        default:
-                            q = Quaternion::FromEuler(euler.x, euler.y, euler.z);
-                            break;
-                        }
-
-                        channel.rotations[t] = q;
+                        // Decompose per the node's rotation order; ufbx uses the same
+                        // convention for the rest pose, so the animation matches it
+                        ufbx_quat q = ufbx_euler_to_quat(euler, node->rotation_order);
+                        channel.rotations[t] = Quaternion(q.x, q.y, q.z, q.w);
                     }
                 });
 
@@ -294,8 +242,6 @@ namespace cx
                 [&](NodeAnimationChannel& channel, ufbx_anim_prop* prop, ufbx_node* node)
                 {
                     channel.scales.resize(channel.times.size());
-                    channel.translations.resize(channel.times.size(), Vector3(0, 0, 0));
-                    channel.rotations.resize(channel.times.size(), Quaternion(0, 0, 0, 1));
 
                     for (size_t t = 0; t < channel.times.size(); ++t)
                     {

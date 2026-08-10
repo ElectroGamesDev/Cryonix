@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Cryonix LANGUAGES CXX)
+project(Cryonix LANGUAGES CXX C)
 
 set(PLATFORM "WINDOWS" CACHE STRING
     "Target platform: WINDOWS, LINUX, MACOS, IOS, ANDROID, WEB")
@@ -16,32 +16,19 @@ if(PLATFORM_INDEX EQUAL -1)
     )
 endif()
 
-if (PLATFORM STREQUAL "WEB")
-    set(DRACO_JS_GLUE ON CACHE BOOL "" FORCE)
-    set(DRACO_WASM ON CACHE BOOL "" FORCE)
-
-    # Emscripten flags
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto" CACHE STRING "" FORCE)
+if(NOT PLATFORM STREQUAL "WINDOWS")
+    message(FATAL_ERROR
+        "Only the WINDOWS platform is currently supported. "
+        "The vendored third-party libraries are prebuilt for Windows only."
+    )
 endif()
 
-option(DRACO_JS_GLUE               "Build JavaScript glue" OFF)
-option(DRACO_WASM                  "Build WebAssembly" OFF)
-option(DRACO_UNITY_PLUGIN          "Build Unity plugin" OFF)
-option(DRACO_MAYA_PLUGIN           "Build Maya plugin" OFF)
-option(DRACO_TRANSCODER_SUPPORTED  "Enable transcoder" OFF)
-option(DRACO_ANIMATION_ENCODING    "Enable animation encoding" OFF)
-option(DRACO_TESTS                 "Build Draco tests" OFF)
-option(DRACO_BUILD_EXAMPLES        "Build Draco examples" OFF)
-option(DRACO_ENCODER               "Enable Draco encoder" OFF)
-
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
 
 if (MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebugDLL" CACHE STRING "" FORCE)
@@ -53,105 +40,105 @@ if (MSVC)
 endif()
 
 add_compile_definitions(
+    PLATFORM_WINDOWS
+
     $<$<CONFIG:Debug>:BX_CONFIG_DEBUG=1>
     $<$<CONFIG:Debug>:_CRT_SECURE_NO_WARNINGS>
 
-    $<$<CONFIG:Release>:BX_CONFIG_DEBUG=0>
+    $<$<CONFIG:Release>:BX_CONFIG_DEBUG=1>
     $<$<CONFIG:Release>:_CRT_SECURE_NO_WARNINGS>
 )
 
-
-file(GLOB_RECURSE BX_SRC "third_party/bx/src/*.cpp")
-add_library(bx STATIC ${BX_SRC})
-target_include_directories(bx PUBLIC third_party/bx/include)
-
-file(GLOB_RECURSE BIMG_SRC "third_party/bimg/src/*.cpp")
-add_library(bimg STATIC ${BIMG_SRC})
-target_include_directories(bimg PUBLIC third_party/bimg/include)
-
-file(GLOB_RECURSE BGFX_SRC "third_party/bgfx/src/*.cpp")
-add_library(bgfx STATIC ${BGFX_SRC})
-target_include_directories(bgfx PUBLIC third_party/bgfx/include)
-target_link_libraries(bgfx PUBLIC bx bimg)
-
-file(GLOB_RECURSE IMGUI_SRC "third_party/imgui/*.cpp")
-add_library(imgui STATIC ${IMGUI_SRC})
-target_include_directories(imgui PUBLIC third_party/imgui)
-
-add_library(stb_image INTERFACE)
-target_include_directories(stb_image INTERFACE third_party/stb_image)
-
-if (NOT TARGET stb)
-    add_library(stb INTERFACE)
-    target_link_libraries(stb INTERFACE stb_image)
-endif()
-
-add_library(tinystl INTERFACE)
-target_include_directories(tinystl INTERFACE third_party/tinystl)
+set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
 
 add_library(cgltf INTERFACE)
-target_include_directories(cgltf INTERFACE third_party/cgltf)
+target_include_directories(cgltf INTERFACE ${THIRD_PARTY_DIR}/cgltf/include)
 
-if (NOT TARGET glm)
-    add_library(glm INTERFACE)
-    target_include_directories(glm INTERFACE third_party/glm)
-endif()
-
-add_subdirectory(third_party/draco)
+add_library(stb_image INTERFACE)
+target_include_directories(stb_image INTERFACE ${THIRD_PARTY_DIR}/stb_image/include)
 
 add_library(rapidobj INTERFACE)
-target_include_directories(rapidobj INTERFACE third_party/rapidobj)
+target_include_directories(rapidobj INTERFACE ${THIRD_PARTY_DIR})
 
-file(GLOB_RECURSE UFBX_SRC "third_party/ufbx/*.c")
-add_library(ufbx STATIC ${UFBX_SRC})
-target_include_directories(ufbx PUBLIC third_party/ufbx)
+add_library(compat INTERFACE)
+target_include_directories(compat INTERFACE ${THIRD_PARTY_DIR}/compat/include)
 
-file(GLOB_RECURSE ZSTD_SRC "third_party/zstd/*.c")
-add_library(zstd STATIC ${ZSTD_SRC})
-target_include_directories(zstd PUBLIC third_party/zstd)
-
-file(GLOB_RECURSE BASISU_SRC "third_party/basis universal/*.cpp")
-add_library(basisu STATIC ${BASISU_SRC})
-target_include_directories(basisu PUBLIC "third_party/basis universal")
-
-file(GLOB_RECURSE MINIAUDIO_SRC "third_party/miniaudio/miniaudio.c")
-add_library(miniaudio STATIC ${MINIAUDIO_SRC})
-target_include_directories(miniaudio PUBLIC third_party/miniaudio)
-
-add_subdirectory(third_party/glfw)
-
+add_library(draco INTERFACE)
+target_include_directories(draco INTERFACE ${THIRD_PARTY_DIR})
 
 file(GLOB_RECURSE CRYONIX_SRC "src/*.cpp" "src/*.c")
 file(GLOB_RECURSE CRYONIX_INCLUDE "include/*.h" "include/*.hpp")
 
-add_library(Cryonix STATIC ${CRYONIX_SRC} ${CRYONIX_INCLUDE})
+add_library(Cryonix STATIC
+    ${CRYONIX_SRC}
+    ${CRYONIX_INCLUDE}
+    ${THIRD_PARTY_DIR}/ufbx/ufbx.c
+    ${THIRD_PARTY_DIR}/zstd/zstddeclib.c
+    "${THIRD_PARTY_DIR}/basis universal/basisu_transcoder.cpp"
+)
 
 target_include_directories(Cryonix PUBLIC include)
 
-if (PLATFORM STREQUAL "WINDOWS")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_WINDOWS)
-elseif (PLATFORM STREQUAL "LINUX")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_LINUX)
-elseif (PLATFORM STREQUAL "MACOS")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_MACOS)
-elseif (PLATFORM STREQUAL "IOS")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_IOS)
-elseif (PLATFORM STREQUAL "ANDROID")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_ANDROID)
-elseif (PLATFORM STREQUAL "WEB")
-    target_compile_definitions(Cryonix PUBLIC PLATFORM_WEB)
-endif()
+# Don't add third_party/bx or third_party/tinystl here: they contain math.h/string.h that shadow the MSVC ones
+target_include_directories(Cryonix PUBLIC
+    ${THIRD_PARTY_DIR}/bgfx/include
+    ${THIRD_PARTY_DIR}/bgfx/include/c99
+    ${THIRD_PARTY_DIR}/bimg/include
+    ${THIRD_PARTY_DIR}/cgltf/include
+    ${THIRD_PARTY_DIR}/compat/include
+    ${THIRD_PARTY_DIR}/glfw/include
+    ${THIRD_PARTY_DIR}/stb_image/include
+    ${THIRD_PARTY_DIR}
+)
 
 target_link_libraries(Cryonix
     PUBLIC
-        bgfx
-        bx
-        bimg
-        imgui
-        glm
-        stb
+        ${THIRD_PARTY_DIR}/bgfx/lib/bgfxDebug.lib
+        ${THIRD_PARTY_DIR}/bx/lib/bxDebug.lib
+        ${THIRD_PARTY_DIR}/bimg/lib/bimgDebug.lib
+        ${THIRD_PARTY_DIR}/bimg/lib/bimg_decodeDebug.lib
+        ${THIRD_PARTY_DIR}/glfw/lib/glfw3.lib
+        ${THIRD_PARTY_DIR}/draco/lib/draco.lib
         cgltf
+        stb_image
+        rapidobj
+        compat
         draco
 )
+
+set(SHADERC_DIR "" CACHE PATH "bgfx shaderc build output dir")
+set(SHADERC_INCLUDE_DIR "" CACHE PATH "bgfx source dir containing bgfx_shader.sh")
+
+find_program(SHADERC_EXECUTABLE shadercDebug HINTS
+    "${SHADERC_DIR}"
+    PATH_SUFFIXES win64_vs2022/bin/Shaderc
+    NO_DEFAULT_PATH
+)
+
+if(SHADERC_EXECUTABLE AND NOT SHADERC_INCLUDE_DIR)
+    message(FATAL_ERROR "SHADERC_INCLUDE_DIR must point at the bgfx source dir (contains bgfx_shader.sh) to rebuild shaders.")
+endif()
+
+if(SHADERC_EXECUTABLE)
+    set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+
+    add_custom_command(
+        OUTPUT "${SHADER_OUTPUT_DIR}/vs_default.bin"
+        COMMAND "${SHADERC_EXECUTABLE}" -f "${SHADER_OUTPUT_DIR}/vs_default.sc" -o "${SHADER_OUTPUT_DIR}/vs_default.bin" --type vertex --platform windows -p s_5_0 --varyingdef "${SHADER_OUTPUT_DIR}/varying.def.sc" -i "${SHADERC_INCLUDE_DIR}"
+        DEPENDS "${SHADER_OUTPUT_DIR}/vs_default.sc" "${SHADER_OUTPUT_DIR}/varying.def.sc"
+        COMMENT "Compiling vs_default.sc"
+    )
+
+    add_custom_command(
+        OUTPUT "${SHADER_OUTPUT_DIR}/fs_default.bin"
+        COMMAND "${SHADERC_EXECUTABLE}" -f "${SHADER_OUTPUT_DIR}/fs_default.sc" -o "${SHADER_OUTPUT_DIR}/fs_default.bin" --type fragment --platform windows -p s_5_0 --varyingdef "${SHADER_OUTPUT_DIR}/varying.def.sc" -i "${SHADERC_INCLUDE_DIR}"
+        DEPENDS "${SHADER_OUTPUT_DIR}/fs_default.sc" "${SHADER_OUTPUT_DIR}/varying.def.sc"
+        COMMENT "Compiling fs_default.sc"
+    )
+
+    add_custom_target(CryonixShaders
+        DEPENDS "${SHADER_OUTPUT_DIR}/vs_default.bin" "${SHADER_OUTPUT_DIR}/fs_default.bin"
+    )
+endif()
 
 message(STATUS "Cryonix Target Platform: ${PLATFORM}")

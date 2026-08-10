@@ -6,7 +6,7 @@
 #include "Window.h"
 #include "Input.h"
 #include "Renderer.h"
-#include "Model.h";
+#include "Model.h"
 #include "Texture.h"
 #include "loaders/ModelLoader.h"
 #include "Shader.h"

@@ -115,7 +115,7 @@ namespace cx
         void SetSkinned(bool skinned);
 
         // Node management for animations
-        void SetNodeCount(int count) { m_nodeCount = count; }
+        void SetNodeCount(int count) { m_nodeCount = count; m_animator.SetNodeCount(count); }
         //int GetNodeCount() const { return m_nodeCount; }
 
     private:

@@ -271,6 +271,12 @@ namespace cx
         if (!IsValid() || !data)
             return false;
 
+        if (m_readbackPending)
+        {
+            std::cerr << "[WARNING] SetPixelData: Pixel data readback still in progress. Retry after the readback completes." << std::endl;
+            return false;
+        }
+
         const bgfx::Memory* mem = bgfx::copy(data, m_width * m_height * channels);
         bgfx::updateTexture2D(m_handle, 0, 0, 0, 0, m_width, m_height, mem);
 
@@ -345,6 +351,9 @@ namespace cx
             return true;
         }
 
+        if (newWidth <= 0 || newHeight <= 0)
+            return false;
+
         std::vector<uint8_t> newData(newWidth * newHeight * m_channels);
 
         for (int y = 0; y < newHeight; ++y)
@@ -361,8 +370,10 @@ namespace cx
             }
         }
 
+        int channels = m_channels;
+        bool isColorTexture = m_isColorTexture;
         Destroy();
-        return LoadFromMemory(newData.data(), newWidth, newHeight, m_channels, m_isColorTexture);
+        return LoadFromMemory(newData.data(), newWidth, newHeight, channels, isColorTexture);
     }
 
     bool Texture::GenerateMipmaps()
@@ -376,14 +387,20 @@ namespace cx
             return false;
         }
 
+        int width = m_width;
+        int height = m_height;
+        int channels = m_channels;
+        bgfx::TextureFormat::Enum format = m_format;
+        bool isColorTexture = m_isColorTexture;
+
         Destroy();
 
         uint64_t flags = BGFX_TEXTURE_NONE;
-        if (m_isColorTexture)
+        if (isColorTexture)
             flags |= BGFX_TEXTURE_SRGB;
 
-        const bgfx::Memory* mem = bgfx::copy(m_cachedPixelData.data(), m_width * m_height * m_channels);
-        m_handle = bgfx::createTexture2D(m_width, m_height, true, 1, m_format, flags, mem);
+        const bgfx::Memory* mem = bgfx::copy(m_cachedPixelData.data(), width * height * channels);
+        m_handle = bgfx::createTexture2D(width, height, true, 1, format, flags, mem);
         m_hasMipmaps = true;
 
         return bgfx::isValid(m_handle);
@@ -472,8 +489,10 @@ namespace cx
             }
         }
 
+        int channels = m_channels;
+        bool isColorTexture = m_isColorTexture;
         Destroy();
-        return LoadFromMemory(rotated.data(), m_height, m_width, m_channels, m_isColorTexture);
+        return LoadFromMemory(rotated.data(), m_height, m_width, channels, isColorTexture);
     }
 
     bool Texture::Grayscale()
@@ -651,8 +670,14 @@ namespace cx
             return false;
         }
 
+        // Configure a dedicated view for the blit; unconfigured views may never execute on some backends
+        static constexpr bgfx::ViewId kReadbackViewId = 250;
+        bgfx::setViewName(kReadbackViewId, "texture readback");
+        bgfx::setViewRect(kReadbackViewId, 0, 0, 1, 1);
+        bgfx::touch(kReadbackViewId);
+
         // Blit from main texture to staging texture
-        bgfx::blit(bgfx::ViewId(255), stagingTexture, 0, 0, m_handle, 0, 0, m_width, m_height);
+        bgfx::blit(kReadbackViewId, stagingTexture, 0, 0, m_handle, 0, 0, m_width, m_height);
 
         int dataSize = m_width * m_height * m_channels;
         m_cachedPixelData.resize(dataSize);

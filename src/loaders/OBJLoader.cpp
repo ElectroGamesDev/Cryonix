@@ -13,7 +13,6 @@
 #include <vector>
 #include <atomic>
 #include <future>
-#include <optional>
 #include <algorithm>
 #include <memory>
 #include <limits>
@@ -49,25 +48,54 @@ namespace cx
         }
     };
 
+    struct DecodedImage
+    {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        std::vector<unsigned char> pixels;
+    };
+
     struct TextureCache
     {
         TextureCache() = default;
 
-        Texture* GetIfExists(std::string_view path)
+        std::shared_ptr<DecodedImage> GetIfExists(std::string_view path)
         {
             std::shared_lock lock(mutex_);
             auto it = cache_.find(path.data());
             return (it != cache_.end()) ? it->second : nullptr;
         }
 
-        void Insert(std::string_view path, Texture* tex)
+        void Insert(std::string_view path, const std::shared_ptr<DecodedImage>& image)
         {
             std::unique_lock lock(mutex_);
-            cache_[path.data()] = tex;
+            cache_[path.data()] = image;
         }
 
-        std::unordered_map<std::string, Texture*> cache_;
+        std::unordered_map<std::string, std::shared_ptr<DecodedImage>> cache_;
         mutable std::shared_mutex mutex_;
+    };
+
+    struct MaterialData
+    {
+        Color albedo = Color::White();
+        float roughness = 0.5f;
+        float metallic = 0.0f;
+        Color emissive = Color::White();
+
+        std::shared_ptr<DecodedImage> mapAlbedo;
+        std::shared_ptr<DecodedImage> mapMetallicRoughness;
+        std::shared_ptr<DecodedImage> mapNormal;
+        std::shared_ptr<DecodedImage> mapAO;
+        std::shared_ptr<DecodedImage> mapEmissive;
+    };
+
+    struct MeshData
+    {
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        int materialIndex = -1;
     };
 
     static size_t GetThreadCount()
@@ -106,80 +134,60 @@ namespace cx
 
         Model* model = new Model();
 
-        //Prepare materials asynchronously (but lightweight)
         const std::filesystem::path objPath = filePath;
         const std::filesystem::path objDir = objPath.parent_path();
         TextureCache textureCache;
 
-        // Helper to synchronously load an image from disk
-        auto loadTextureFromFile = [&](const std::filesystem::path& fullPath, bool isColorTexture) -> std::optional<Texture*>
+        // Worker threads only decode image data; bgfx resources are created on the main thread
+        auto loadImageFromFile = [&](const std::filesystem::path& fullPath, bool isColorTexture) -> std::shared_ptr<DecodedImage>
             {
                 if (!std::filesystem::exists(fullPath))
-                    return std::nullopt;
+                    return nullptr;
 
                 int width = 0, height = 0, channels = 0;
-                // prefer 4 channels for color textures
                 int desired = isColorTexture ? 4 : 0;
                 unsigned char* pixels = stbi_load(fullPath.string().c_str(), &width, &height, &channels, desired);
                 if (!pixels)
                 {
-                    // second attempt to force RGBA if we got 3 and need 4 on some platforms
-                    if (desired == 0 && channels == 3)
-                    {
-                        pixels = stbi_load(fullPath.string().c_str(), &width, &height, &channels, 4);
-                        channels = 4;
-                    }
-                    if (!pixels)
-                    {
-                        std::cerr << "[WARNING] Failed to load texture: " << fullPath << " - " << stbi_failure_reason() << std::endl;
-                        return std::nullopt;
-                    }
+                    std::cerr << "[WARNING] Failed to load texture: " << fullPath << " - " << stbi_failure_reason() << std::endl;
+                    return nullptr;
                 }
 
-                // Create Texture
-                Texture* tex = new Texture();
-                bool ok = tex->LoadFromMemory(pixels, width, height, (desired == 0 ? channels : desired), isColorTexture);
+                auto image = std::make_shared<DecodedImage>();
+                image->width = width;
+                image->height = height;
+                image->channels = (desired == 0) ? channels : desired;
+                size_t pixelCount = static_cast<size_t>(width) * height * image->channels;
+                image->pixels.assign(pixels, pixels + pixelCount);
 
                 stbi_image_free(pixels);
-
-                if (!ok)
-                {
-                    delete tex;
-                    return std::nullopt;
-                }
-
-                return tex;
+                return image;
             };
 
-        auto loadTextureWithCache = [&](std::string_view texPath, bool isColorTexture) -> Texture*
+        auto loadImageWithCache = [&](std::string_view texPath, bool isColorTexture) -> std::shared_ptr<DecodedImage>
             {
                 if (texPath.empty())
                     return nullptr;
 
                 // Fast read path
-                if (Texture* cached = textureCache.GetIfExists(texPath))
+                if (auto cached = textureCache.GetIfExists(texPath))
                     return cached;
 
                 // Build full path
                 std::filesystem::path fullPath = objDir / texPath;
 
-                // Load image then insert into cache.
-                auto loaded = loadTextureFromFile(fullPath, isColorTexture);
-
-                if (!loaded.has_value())
+                // Load image then insert into cache
+                auto image = loadImageFromFile(fullPath, isColorTexture);
+                if (!image)
                     return nullptr;
 
-                Texture* tex = loaded.value();
-                textureCache.Insert(texPath, tex);
-
-                return tex;
+                textureCache.Insert(texPath, image);
+                return image;
             };
 
-        // Pre-create Material objects in a vector
-        std::vector<Material*> materials;
-        materials.resize(result.materials.size(), nullptr);
+        // Decode materials in parallel (CPU-only; no bgfx calls on worker threads)
+        std::vector<MaterialData> materialData(result.materials.size());
 
-        // Creating materials with threading
         const size_t materialCount = result.materials.size();
         size_t threadCount = std::min(materialCount == 0 ? size_t(1) : materialCount, GetThreadCount());
         std::atomic<size_t> materialIndex(0);
@@ -194,77 +202,48 @@ namespace cx
                 while ((i = materialIndex.fetch_add(1)) < materialCount)
                 {
                     const rapidobj::Material& objMat = result.materials[i];
-                    Material* material = new Material();
-                    material->SetShader(s_defaultShader);
+                    MaterialData& md = materialData[i];
 
-                    // Set basic PBR properties
-                    Color albedoColor(
+                    md.albedo = Color(
                         static_cast<unsigned char>(std::clamp(objMat.diffuse[0] * 255.0f, 0.0f, 255.0f)),
                         static_cast<unsigned char>(std::clamp(objMat.diffuse[1] * 255.0f, 0.0f, 255.0f)),
                         static_cast<unsigned char>(std::clamp(objMat.diffuse[2] * 255.0f, 0.0f, 255.0f)),
                         static_cast<unsigned char>(std::clamp((1.0f - objMat.dissolve) * 255.0f, 0.0f, 255.0f))
                     );
-                    material->SetAlbedo(albedoColor);
 
                     // Roughness/metallic
-                    float roughness = (objMat.roughness >= 0.0f) ? objMat.roughness : (1.0f - (objMat.shininess / 1000.0f));
-                    float metallic = (objMat.metallic >= 0.0f) ? objMat.metallic : 0.0f;
-                    material->SetRoughness(roughness);
-                    material->SetMetallic(metallic);
+                    md.roughness = (objMat.roughness >= 0.0f) ? objMat.roughness : (1.0f - (objMat.shininess / 1000.0f));
+                    md.metallic = (objMat.metallic >= 0.0f) ? objMat.metallic : 0.0f;
 
-                    Color emissiveColor(
+                    md.emissive = Color(
                         static_cast<unsigned char>(std::clamp(objMat.emission[0] * 255.0f, 0.0f, 255.0f)),
                         static_cast<unsigned char>(std::clamp(objMat.emission[1] * 255.0f, 0.0f, 255.0f)),
                         static_cast<unsigned char>(std::clamp(objMat.emission[2] * 255.0f, 0.0f, 255.0f)),
                         255
                     );
-                    material->SetEmissive(emissiveColor);
 
-                    // Texture loading
+                    // Texture decoding
                     if (!objMat.diffuse_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.diffuse_texname, true))
-                            material->SetMaterialMap(MaterialMapType::Albedo, t);
-                    }
+                        md.mapAlbedo = loadImageWithCache(objMat.diffuse_texname, true);
 
-                    // Metallic-roughness // Todo: Need to separate these 
+                    // Metallic-roughness // Todo: Need to separate these
                     if (!objMat.roughness_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.roughness_texname, false))
-                            material->SetMaterialMap(MaterialMapType::MetallicRoughness, t);
-                    }
+                        md.mapMetallicRoughness = loadImageWithCache(objMat.roughness_texname, false);
 
                     if (!objMat.specular_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.specular_texname, false))
-                            material->SetMaterialMap(MaterialMapType::MetallicRoughness, t);
-                    }
+                        md.mapMetallicRoughness = loadImageWithCache(objMat.specular_texname, false);
 
                     // Normal map
                     if (!objMat.normal_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.normal_texname, false))
-                            material->SetMaterialMap(MaterialMapType::Normal, t);
-                    }
+                        md.mapNormal = loadImageWithCache(objMat.normal_texname, false);
                     else if (!objMat.bump_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.bump_texname, false))
-                            material->SetMaterialMap(MaterialMapType::Normal, t);
-                    }
+                        md.mapNormal = loadImageWithCache(objMat.bump_texname, false);
 
                     if (!objMat.ambient_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.ambient_texname, false))
-                            material->SetMaterialMap(MaterialMapType::AO, t);
-                    }
+                        md.mapAO = loadImageWithCache(objMat.ambient_texname, false);
 
                     if (!objMat.emissive_texname.empty())
-                    {
-                        if (Texture* t = loadTextureWithCache(objMat.emissive_texname, true))
-                            material->SetMaterialMap(MaterialMapType::Emissive, t);
-                    }
-
-                    materials[i] = material;
+                        md.mapEmissive = loadImageWithCache(objMat.emissive_texname, true);
                 }
                 });
         }
@@ -272,17 +251,10 @@ namespace cx
         for (auto& w : materialWorkers)
             w.join();
 
-        // Create default material
-        Material* defaultMaterial = new Material();
-        defaultMaterial->SetShader(s_defaultShader);
-        defaultMaterial->SetAlbedo(Color(200, 200, 200, 255));
-        defaultMaterial->SetRoughness(0.5f);
-        defaultMaterial->SetMetallic(0.0f);
-
         size_t totalShapes = result.shapes.size();
-        std::vector<std::shared_ptr<Mesh>> allMeshes;
-        allMeshes.reserve(totalShapes * 2);
-        std::mutex allMeshesMutex;
+        std::vector<MeshData> meshData;
+        meshData.reserve(totalShapes * 2);
+        std::mutex meshDataMutex;
 
         size_t shapeThreadCount = std::min<size_t>(totalShapes == 0 ? 1 : totalShapes, GetThreadCount());
         std::atomic<size_t> shapeIndex(0);
@@ -394,14 +366,17 @@ namespace cx
                         int matId = pair.first;
                         const std::vector<size_t>& faces = pair.second;
 
+                        MeshData data;
+                        data.materialIndex = matId;
+
                         std::vector<char> faceMask(mesh.num_face_vertices.size(), 0);
                         for (size_t f : faces)
                             faceMask[f] = 1;
 
                         // Reserve approximate sizes
                         size_t estimatedVerts = faces.size() * 3;
-                        std::vector<Vertex> vertices;
-                        std::vector<uint32_t> indices;
+                        std::vector<Vertex>& vertices = data.vertices;
+                        std::vector<uint32_t>& indices = data.indices;
                         vertices.reserve(estimatedVerts);
                         indices.reserve(estimatedVerts);
 
@@ -505,15 +480,12 @@ namespace cx
                             idxOffset += numVerts;
                         } //
 
-                        // Get material pointer
-                        Material* mat = defaultMaterial;
-                        if (matId >= 0 && static_cast<size_t>(matId) < materials.size() && materials[matId])
-                            mat = materials[matId];
+                        // Compute tangents only if the material has a normal map
+                        bool hasNormalMap = false;
+                        if (matId >= 0 && static_cast<size_t>(matId) < materialData.size())
+                            hasNormalMap = (materialData[matId].mapNormal != nullptr);
 
-                        bool needsTangents = (mat->GetMaterialMap(MaterialMapType::Normal) != nullptr) && !vertices.empty();
-
-                        // Compute tangents only if normal map present
-                        if (needsTangents)
+                        if (hasNormalMap && !vertices.empty())
                         {
                             // Accumulate tangents
                             std::vector<Vector3> tanAccum(vertices.size(), { 0,0,0 });
@@ -527,9 +499,8 @@ namespace cx
                                 const int minThreshold = (threads > 8) ? 10000 : 20000;
                                 return std::max(minThreshold, baseThreshold / std::max(1, threads));
                              }();
-                            static const int VertThreshold = TriThreshold;
 
-                            if (TriThreshold > TriThreshold && vertices.size() > VertThreshold)
+                            if (triCount > static_cast<size_t>(TriThreshold))
                             {
                                 // parallel loop by chunks
                                 const size_t chunk = 4096;
@@ -631,15 +602,8 @@ namespace cx
                             }
                         }
 
-                        // Create mesh object
-                        auto newMesh = std::make_shared<Mesh>();
-                        newMesh->SetSkinned(false);
-                        newMesh->SetMaterial(mat);
-                        newMesh->SetVertices(vertices);
-                        newMesh->SetIndices(indices);
-
-                        std::lock_guard<std::mutex> glock(allMeshesMutex);
-                        allMeshes.push_back(newMesh);
+                        std::lock_guard<std::mutex> glock(meshDataMutex);
+                        meshData.push_back(std::move(data));
                     }
                 }
             });
@@ -647,6 +611,67 @@ namespace cx
 
         for (auto& worker : shapeWorkers)
             worker.join();
+
+        // Create materials on the main thread (bgfx resource creation is not thread-safe)
+        std::vector<Material*> materials;
+        materials.resize(result.materials.size(), nullptr);
+
+        for (size_t i = 0; i < result.materials.size(); ++i)
+        {
+            const MaterialData& md = materialData[i];
+            Material* material = new Material();
+            material->SetShader(s_defaultShader);
+            material->SetAlbedo(md.albedo);
+            material->SetRoughness(md.roughness);
+            material->SetMetallic(md.metallic);
+            material->SetEmissive(md.emissive);
+
+            auto createMap = [&](const std::shared_ptr<DecodedImage>& image, MaterialMapType type)
+            {
+                if (!image || image->pixels.empty())
+                    return;
+
+                Texture* tex = new Texture();
+                bool isColor = (type == MaterialMapType::Albedo || type == MaterialMapType::Emissive);
+                if (tex->LoadFromMemory(image->pixels.data(), image->width, image->height, image->channels, isColor))
+                    material->SetMaterialMap(type, tex);
+                else
+                    delete tex;
+            };
+
+            createMap(md.mapAlbedo, MaterialMapType::Albedo);
+            createMap(md.mapMetallicRoughness, MaterialMapType::MetallicRoughness);
+            createMap(md.mapNormal, MaterialMapType::Normal);
+            createMap(md.mapAO, MaterialMapType::AO);
+            createMap(md.mapEmissive, MaterialMapType::Emissive);
+
+            materials[i] = material;
+        }
+
+        // Create default material
+        Material* defaultMaterial = new Material();
+        defaultMaterial->SetShader(s_defaultShader);
+        defaultMaterial->SetAlbedo(Color(200, 200, 200, 255));
+        defaultMaterial->SetRoughness(0.5f);
+        defaultMaterial->SetMetallic(0.0f);
+
+        // Create meshes on the main thread (Mesh registration is not thread-safe)
+        std::vector<std::shared_ptr<Mesh>> allMeshes;
+        allMeshes.reserve(meshData.size());
+
+        for (auto& data : meshData)
+        {
+            Material* mat = defaultMaterial;
+            if (data.materialIndex >= 0 && static_cast<size_t>(data.materialIndex) < materials.size() && materials[data.materialIndex])
+                mat = materials[data.materialIndex];
+
+            auto newMesh = std::make_shared<Mesh>();
+            newMesh->SetSkinned(false);
+            newMesh->SetMaterial(mat);
+            newMesh->SetVertices(std::move(data.vertices));
+            newMesh->SetIndices(std::move(data.indices));
+            allMeshes.push_back(newMesh);
+        }
 
         for (auto& mesh : allMeshes)
         {

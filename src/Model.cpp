@@ -126,6 +126,13 @@ namespace cx
         
         // Todo: This likely breaks GetNodeCount(), but it doesn't look like that function is currently used
 
+        struct MergedMeshData
+        {
+            std::vector<Vertex> vertices;
+            std::vector<uint32_t> indices;
+            Material* material;
+        };
+
         std::unordered_map<Material*, std::vector<std::shared_ptr<Mesh>>> groups;
 
         // Group non-skinned meshes by material
@@ -145,10 +152,13 @@ namespace cx
         for (const auto& mesh : m_meshes)
         {
             if (!mesh || mesh->IsSkinned())
+            {
+                mesh->Upload();
                 newMeshes.push_back(mesh);
+            }
         }
 
-        std::vector<std::future<std::shared_ptr<Mesh>>> futures;
+        std::vector<std::future<MergedMeshData>> futures;
 
         for (auto& pair : groups)
         {
@@ -165,9 +175,13 @@ namespace cx
                 continue;
             }
 
-            // Merge groups
-            auto mergeGroup = [&group, mat = pair.first]() -> std::shared_ptr<Mesh>
+            // Merge groups; workers only produce raw data so no bgfx/registry
+            // state is touched from non-main threads
+            auto mergeGroup = [&group, mat = pair.first]() -> MergedMeshData
             {
+                MergedMeshData result;
+                result.material = mat;
+
                 size_t totalVertices = 0, totalIndices = 0;
                 for (const auto& mesh : group)
                 {
@@ -175,11 +189,8 @@ namespace cx
                     totalIndices += mesh->GetIndices().size();
                 }
 
-                auto mergedMesh = std::make_shared<Mesh>();
-                auto& mergedVertices = mergedMesh->GetVertices();
-                auto& mergedIndices = mergedMesh->GetIndices();
-                mergedVertices.reserve(totalVertices);
-                mergedIndices.reserve(totalIndices);
+                result.vertices.reserve(totalVertices);
+                result.indices.reserve(totalIndices);
 
                 uint32_t vertexOffset = 0;
                 for (const auto& mesh : group)
@@ -187,42 +198,52 @@ namespace cx
                     const auto& srcVertices = mesh->GetVertices();
                     const auto& srcIndices = mesh->GetIndices();
 
-                    size_t oldSize = mergedVertices.size();
-                    mergedVertices.resize(oldSize + srcVertices.size());
-                    std::memcpy(mergedVertices.data() + oldSize, srcVertices.data(), srcVertices.size() * sizeof(Vertex));
+                    size_t oldSize = result.vertices.size();
+                    result.vertices.resize(oldSize + srcVertices.size());
+                    std::memcpy(result.vertices.data() + oldSize, srcVertices.data(), srcVertices.size() * sizeof(Vertex));
 
-                    oldSize = mergedIndices.size();
-                    mergedIndices.resize(oldSize + srcIndices.size());
+                    oldSize = result.indices.size();
+                    result.indices.resize(oldSize + srcIndices.size());
                     const uint32_t* srcIdxPtr = srcIndices.data();
-                    uint32_t* destIdxPtr = mergedIndices.data() + oldSize;
+                    uint32_t* destIdxPtr = result.indices.data() + oldSize;
                     for (size_t i = 0; i < srcIndices.size(); ++i)
                         destIdxPtr[i] = srcIdxPtr[i] + vertexOffset;
 
                     vertexOffset += static_cast<uint32_t>(srcVertices.size());
                 }
 
-                mergedMesh->SetMaterial(mat);
-                mergedMesh->SetSkinned(false);
-                return mergedMesh;
+                return result;
             };
 
             // Only use multi threading if there's 2 or more groups
             if (groups.size() < 2)
             {
-                auto merged = mergeGroup();
-                merged->Upload();
-                newMeshes.push_back(merged);
+                MergedMeshData merged = mergeGroup();
+
+                auto mesh = std::make_shared<Mesh>();
+                mesh->SetMaterial(merged.material);
+                mesh->SetSkinned(false);
+                mesh->SetVertices(std::move(merged.vertices));
+                mesh->SetIndices(std::move(merged.indices));
+                mesh->Upload();
+                newMeshes.push_back(mesh);
             }
             else
                 futures.push_back(std::async(std::launch::async, mergeGroup));
         }
 
-        // Upload meshes on main thread when the merging is finished
+        // Create and upload meshes on the main thread when the merging is finished
         for (auto& future : futures)
         {
-            auto merged = future.get();
-            merged->Upload();
-            newMeshes.push_back(merged);
+            MergedMeshData merged = future.get();
+
+            auto mesh = std::make_shared<Mesh>();
+            mesh->SetMaterial(merged.material);
+            mesh->SetSkinned(false);
+            mesh->SetVertices(std::move(merged.vertices));
+            mesh->SetIndices(std::move(merged.indices));
+            mesh->Upload();
+            newMeshes.push_back(mesh);
         }
 
         m_meshes = std::move(newMeshes);

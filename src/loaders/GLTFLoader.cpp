@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <future>
 #include <memory>
+#include <algorithm>
 #include <stb_image.h>
 #include "basis universal/basisu_transcoder.h"
 #include <draco/compression/decode.h>
@@ -941,9 +942,12 @@ namespace cx
                 auto cached = textureCache.find(tex->image);
                 if (cached != textureCache.end())
                 {
-                    Material* mat = materialMap[material];
-                    if (mat)
-                        mat->SetMaterialMap(type, cached->second);
+                    if (cached->second)
+                    {
+                        Material* mat = materialMap[material];
+                        if (mat)
+                            mat->SetMaterialMap(type, cached->second);
+                    }
 
                     return;
                 }
@@ -953,21 +957,32 @@ namespace cx
                 if (futureIt != textureFutures.end())
                 {
                     DecodedImage decoded = futureIt->second.get();
+                    textureFutures.erase(futureIt);
+
+                    Texture* texture = nullptr;
                     if (decoded.valid)
                     {
-                        Texture* texture = new Texture();
+                        texture = new Texture();
                         bool isColorTexture = (type == MaterialMapType::Albedo || type == MaterialMapType::Emissive);
-                        if (texture->LoadFromMemory(decoded.pixels, decoded.width, decoded.height, 4, isColorTexture))
+                        if (!texture->LoadFromMemory(decoded.pixels, decoded.width, decoded.height, 4, isColorTexture))
                         {
-                            Material* mat = materialMap[material];
-                            if (mat)
-                                mat->SetMaterialMap(type, texture);
-                            textureCache[tex->image] = texture;
-                        }
-                        else
                             delete texture;
+                            texture = nullptr;
+                        }
+                    }
 
+                    if (decoded.pixels)
                         stbi_image_free(decoded.pixels);
+
+                    // Cache the result (even a failed decode) so a future that is
+                    // shared by multiple materials is only consumed once
+                    textureCache[tex->image] = texture;
+
+                    if (texture)
+                    {
+                        Material* mat = materialMap[material];
+                        if (mat)
+                            mat->SetMaterialMap(type, texture);
                     }
                     return;
                 }
@@ -1163,19 +1178,29 @@ namespace cx
 #endif
                 {
                     // Load uncompressed attributes
+                    size_t vertexCount = 0;
+                    for (size_t k = 0; k < primitive.attributes_count; ++k)
+                    {
+                        cgltf_accessor* countAccessor = primitive.attributes[k].data;
+                        if (countAccessor)
+                            vertexCount = std::max(vertexCount, countAccessor->count);
+                    }
+
+                    vertices.resize(vertexCount);
+
                     for (size_t k = 0; k < primitive.attributes_count; ++k)
                     {
                         cgltf_attribute& attribute = primitive.attributes[k];
                         cgltf_accessor* accessor = attribute.data;
 
-                        if (vertices.empty())
-                            vertices.resize(accessor->count);
+                        if (!accessor)
+                            continue;
 
                         if (attribute.type == cgltf_attribute_type_position)
                         {
                             const uint8_t* base = AccessorBase(accessor);
                             size_t stride = AccessorStride(accessor, 3);
-                            for (size_t v = 0; v < accessor->count; ++v)
+                            for (size_t v = 0; v < accessor->count && v < vertices.size(); ++v)
                             {
                                 Vector3 pos;
                                 if (base)
@@ -1210,7 +1235,7 @@ namespace cx
                                     cgltf_accessor_read_float(accessor, v, raw, 3);
                                     normal = Vector3(raw[0], raw[1], raw[2]);
                                 }
-                                vertices[v].normal = hasSkin ? normal : worldTransform.TransformDirection(normal).Normalize();
+                                vertices[v].normal = hasSkin ? normal.Normalize() : worldTransform.TransformDirection(normal).Normalize();
                             }
                         }
                         else if (attribute.type == cgltf_attribute_type_tangent)
@@ -1526,6 +1551,9 @@ namespace cx
                 mesh->SetMaterial(material);
                 mesh->SetVertices(std::move(vertices));
                 mesh->SetIndices(std::move(indices));
+
+                if (node)
+                    mesh->SetNodeIndex(static_cast<int>(node - data->nodes));
 
                 if (!mergeMeshes)
                     mesh->Upload();

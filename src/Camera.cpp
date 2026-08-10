@@ -277,10 +277,18 @@ namespace cx
 
     void Camera::Begin()
     {
+        if (!s_renderer)
+            return;
+
         s_renderer->currentViewId = m_id;
-        bgfx::setViewRect(m_id, 0, 0, uint16_t(s_renderer->width), uint16_t(s_renderer->height));
+
+        // Only reset the view rect if the user has not set one explicitly for this view this frame
+        if (s_renderer->viewportOverriddenViews.find(m_id) == s_renderer->viewportOverriddenViews.end())
+            bgfx::setViewRect(m_id, 0, 0, uint16_t(s_renderer->width), uint16_t(s_renderer->height));
+
         bgfx::setViewClear(m_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, s_renderer->clearColor, s_renderer->clearDepth, 0);
         SetViewTransform(GetViewMatrix(), GetProjectionMatrix());
+        SetCameraPosition(m_position);
         bgfx::touch(m_id);
     }
 

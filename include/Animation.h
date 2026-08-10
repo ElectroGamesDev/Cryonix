@@ -587,14 +587,16 @@ namespace cx
         const std::vector<Matrix4>& GetBoneMatrices() const { return m_boneMatrices; }
         const std::vector<Matrix4>& GetFinalBoneMatrices() const
         {
+            static const std::vector<Matrix4> empty;
             if (!m_skeleton)
-                return {};
+                return empty;
 
             return m_skeleton->finalMatrices;
         }
 
         AnimationClip* GetCurrentClip() const { return m_currentClip; }
 
+        void SetNodeCount(int count);
         const std::vector<Matrix4>& GetNodeTransforms() const { return m_nodeTransforms; }
         Matrix4 GetNodeTransform(int nodeIndex) const;
 
@@ -602,6 +604,7 @@ namespace cx
         Skeleton* m_skeleton;
         AnimationClip* m_currentClip;
         std::vector<Matrix4> m_boneMatrices;
+        std::vector<Matrix4> m_boneWorldMatrices;
         std::vector<Matrix4> m_localTransforms;
 
         std::vector<Matrix4> m_nodeTransforms;

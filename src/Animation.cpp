@@ -722,6 +722,7 @@ namespace cx
 
         m_localTransforms.resize(m_skeleton->bones.size());
         m_boneMatrices.resize(m_skeleton->bones.size());
+        m_boneWorldMatrices.resize(m_skeleton->bones.size());
 
         for (auto& bone : m_skeleton->bones)
             bone.children.clear();
@@ -776,10 +777,10 @@ namespace cx
         if (m_rootMotionEnabled && clip->IsRootMotionEnabled() && m_skeleton && !m_skeleton->bones.empty())
         {
             int rootBoneIdx = clip->GetRootBoneIndex();
-            if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneMatrices.size()))
+            if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneWorldMatrices.size()))
             {
-                m_previousRootPosition = m_boneMatrices[rootBoneIdx].GetTranslation();
-                m_previousRootRotation = m_boneMatrices[rootBoneIdx].GetRotation();
+                m_previousRootPosition = m_boneWorldMatrices[rootBoneIdx].GetTranslation();
+                m_previousRootRotation = m_boneWorldMatrices[rootBoneIdx].GetRotation();
             }
         }
     }
@@ -1120,10 +1121,10 @@ namespace cx
                 if (m_rootMotionEnabled && clip->IsRootMotionEnabled() && !m_skeleton->bones.empty())
                 {
                     int rootBoneIdx = clip->GetRootBoneIndex();
-                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneMatrices.size()))
+                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneWorldMatrices.size()))
                     {
-                        m_previousRootPosition = m_boneMatrices[rootBoneIdx].GetTranslation();
-                        m_previousRootRotation = m_boneMatrices[rootBoneIdx].GetRotation();
+                        m_previousRootPosition = m_boneWorldMatrices[rootBoneIdx].GetTranslation();
+                        m_previousRootRotation = m_boneWorldMatrices[rootBoneIdx].GetRotation();
                     }
                 }
             }
@@ -1136,21 +1137,21 @@ namespace cx
                 if (m_crossfade.fromClip->IsRootMotionEnabled())
                 {
                     int rootBoneIdx = m_crossfade.fromClip->GetRootBoneIndex();
-                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneMatrices.size()))
+                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneWorldMatrices.size()))
                     {
                         // Update to current position
-                        m_previousRootPosition = m_boneMatrices[rootBoneIdx].GetTranslation();
-                        m_previousRootRotation = m_boneMatrices[rootBoneIdx].GetRotation();
+                        m_previousRootPosition = m_boneWorldMatrices[rootBoneIdx].GetTranslation();
+                        m_previousRootRotation = m_boneWorldMatrices[rootBoneIdx].GetRotation();
                     }
                 }
                 // If toClip has root motion but fromClip doesn't, initialize from current pose
                 else if (clip->IsRootMotionEnabled())
                 {
                     int rootBoneIdx = clip->GetRootBoneIndex();
-                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneMatrices.size()))
+                    if (rootBoneIdx >= 0 && rootBoneIdx < static_cast<int>(m_boneWorldMatrices.size()))
                     {
-                        m_previousRootPosition = m_boneMatrices[rootBoneIdx].GetTranslation();
-                        m_previousRootRotation = m_boneMatrices[rootBoneIdx].GetRotation();
+                        m_previousRootPosition = m_boneWorldMatrices[rootBoneIdx].GetTranslation();
+                        m_previousRootRotation = m_boneWorldMatrices[rootBoneIdx].GetRotation();
                     }
                 }
             }
@@ -1803,11 +1804,11 @@ namespace cx
             rootBoneIdx = 0;
 
         // Use global/world space transforms
-        if (rootBoneIdx >= static_cast<int>(m_boneMatrices.size()))
+        if (rootBoneIdx >= static_cast<int>(m_boneWorldMatrices.size()))
             return;
 
-        Vector3 currentPosition = m_boneMatrices[rootBoneIdx].GetTranslation();
-        Quaternion currentRotation = m_boneMatrices[rootBoneIdx].GetRotation();
+        Vector3 currentPosition = m_boneWorldMatrices[rootBoneIdx].GetTranslation();
+        Quaternion currentRotation = m_boneWorldMatrices[rootBoneIdx].GetRotation();
 
         // Calculate delta in world space
         m_rootMotion.deltaPosition = (currentPosition - m_previousRootPosition);
@@ -1979,10 +1980,11 @@ namespace cx
 
             case JointConstraint::Type::BallAndSocket:
             {
+                // ToEuler/FromEuler work in degrees
                 Vector3 euler = rotation.ToEuler();
-                euler.x = std::max(constraint.minAngle * 3.14159f / 180.0f, std::min(constraint.maxAngle * 3.14159f / 180.0f, euler.x));
-                euler.y = std::max(constraint.minAngle * 3.14159f / 180.0f, std::min(constraint.maxAngle * 3.14159f / 180.0f, euler.y));
-                euler.z = std::max(constraint.minAngle * 3.14159f / 180.0f, std::min(constraint.maxAngle * 3.14159f / 180.0f, euler.z));
+                euler.x = std::max(constraint.minAngle, std::min(constraint.maxAngle, euler.x));
+                euler.y = std::max(constraint.minAngle, std::min(constraint.maxAngle, euler.y));
+                euler.z = std::max(constraint.minAngle, std::min(constraint.maxAngle, euler.z));
 
                 return Quaternion::FromEuler(euler.y, euler.x, euler.z);
             }
@@ -2194,15 +2196,15 @@ namespace cx
         int midIdx = chain.boneIndices[1];
         int tipIdx = chain.boneIndices[2];
 
-        if (rootIdx >= static_cast<int>(m_boneMatrices.size()) ||
-            midIdx >= static_cast<int>(m_boneMatrices.size()) ||
-            tipIdx >= static_cast<int>(m_boneMatrices.size()))
+        if (rootIdx >= static_cast<int>(m_boneWorldMatrices.size()) ||
+            midIdx >= static_cast<int>(m_boneWorldMatrices.size()) ||
+            tipIdx >= static_cast<int>(m_boneWorldMatrices.size()))
             return;
 
-        // Get world space positions
-        Vector3 rootPos = m_boneMatrices[rootIdx].GetTranslation();
-        Vector3 midPos = m_boneMatrices[midIdx].GetTranslation();
-        Vector3 tipPos = m_boneMatrices[tipIdx].GetTranslation();
+        // Get world space positions (global transforms, not skinning matrices)
+        Vector3 rootPos = m_boneWorldMatrices[rootIdx].GetTranslation();
+        Vector3 midPos = m_boneWorldMatrices[midIdx].GetTranslation();
+        Vector3 tipPos = m_boneWorldMatrices[tipIdx].GetTranslation();
         Vector3 target = chain.targetPosition;
 
         // Calculate limb segment lengths
@@ -2275,45 +2277,33 @@ namespace cx
 
         Matrix4 parentTransform = Matrix4::Identity();
         if (m_skeleton->bones[rootIdx].parentIndex >= 0)
-            parentTransform = m_boneMatrices[m_skeleton->bones[rootIdx].parentIndex];
+            parentTransform = m_boneWorldMatrices[m_skeleton->bones[rootIdx].parentIndex];
 
         Quaternion parentRot = parentTransform.GetRotation();
         Quaternion currentLocalUpperRot = m_localTransforms[rootIdx].GetRotation();
 
-        // Apply delta in world space
-        Quaternion currentWorldRot = parentRot * currentLocalUpperRot;
-        Quaternion newWorldRot = upperDeltaRot * currentWorldRot;
-
-        // Convert back to local space, accounting for rest pose
-        Quaternion newLocalUpperRot = parentRot.Inverse() * newWorldRot;
-
-        // If using rest pose, we need to express rotation relative to rest pose
+        // If using rest pose, apply the delta to the rest pose instead of the current pose
+        Quaternion baseLocalUpperRot = currentLocalUpperRot;
         if (chain.useRestPose && !chain.restPoseRotations.empty())
-        {
-            Quaternion restPoseRot = chain.restPoseRotations[0];
-            Quaternion restInverse = restPoseRot.Inverse();
-            newLocalUpperRot = restPoseRot * (restInverse * newLocalUpperRot);
-        }
+            baseLocalUpperRot = chain.restPoseRotations[0];
+
+        // Convert back to local space (the world delta conjugated through the parent frame)
+        Quaternion newLocalUpperRot = parentRot.Inverse() * (upperDeltaRot * (parentRot * baseLocalUpperRot));
 
         // Mid bone
         Vector3 originalLowerDir = (tipPos - midPos).Normalize();
         Vector3 newLowerDir = (target - newMidPos).Normalize();
         Quaternion lowerDeltaRot = Quaternion::FromToRotation(originalLowerDir, newLowerDir);
 
-        Matrix4 midParentTransform = m_boneMatrices[rootIdx];
-        Quaternion midParentRot = midParentTransform.GetRotation();
+        // Use the root's post-solve world rotation so its delta is not applied twice
+        Quaternion newRootWorldRot = parentRot * newLocalUpperRot;
         Quaternion currentLocalMidRot = m_localTransforms[midIdx].GetRotation();
 
-        Quaternion currentMidWorldRot = midParentRot * currentLocalMidRot;
-        Quaternion newMidWorldRot = lowerDeltaRot * currentMidWorldRot;
-        Quaternion newLocalMidRot = midParentRot.Inverse() * newMidWorldRot;
-
+        Quaternion baseLocalMidRot = currentLocalMidRot;
         if (chain.useRestPose && chain.restPoseRotations.size() > 1)
-        {
-            Quaternion restPoseRot = chain.restPoseRotations[1];
-            Quaternion restInverse = restPoseRot.Inverse();
-            newLocalMidRot = restPoseRot * (restInverse * newLocalMidRot);
-        }
+            baseLocalMidRot = chain.restPoseRotations[1];
+
+        Quaternion newLocalMidRot = newRootWorldRot.Inverse() * (lowerDeltaRot * (newRootWorldRot * baseLocalMidRot));
 
         // Blend with weight
         Quaternion finalUpperRot = Quaternion::Slerp(currentLocalUpperRot, newLocalUpperRot, chain.weight);
@@ -2345,10 +2335,10 @@ namespace cx
             return;
 
         int boneIdx = chain.boneIndices[0];
-        if (boneIdx >= static_cast<int>(m_boneMatrices.size()))
+        if (boneIdx >= static_cast<int>(m_boneWorldMatrices.size()))
             return;
 
-        Vector3 bonePos = m_boneMatrices[boneIdx].GetTranslation();
+        Vector3 bonePos = m_boneWorldMatrices[boneIdx].GetTranslation();
         Vector3 toTarget = (chain.targetPosition - bonePos).Normalize();
         Vector3 forward(0.0f, 0.0f, 1.0f);
 
@@ -2366,22 +2356,27 @@ namespace cx
         if (chain.boneIndices.size() < 2 || !m_skeleton)
             return;
 
-        // Get initial world positions and rotations
+        if (chain.boneIndices[0] < 0 || chain.boneIndices[0] >= static_cast<int>(m_boneWorldMatrices.size()))
+            return;
+
+        // Get initial world positions and rotations (only for valid bones)
         std::vector<Vector3> positions;
         std::vector<Quaternion> rotations;
         std::vector<Vector3> upVectors;
+        std::vector<int> validBones;
         std::vector<float> lengths;
 
         for (size_t i = 0; i < chain.boneIndices.size(); ++i)
         {
             int boneIdx = chain.boneIndices[i];
-            if (boneIdx < static_cast<int>(m_boneMatrices.size()))
+            if (boneIdx < static_cast<int>(m_boneWorldMatrices.size()))
             {
-                positions.push_back(m_boneMatrices[boneIdx].GetTranslation());
-                rotations.push_back(m_boneMatrices[boneIdx].GetRotation());
+                validBones.push_back(boneIdx);
+                positions.push_back(m_boneWorldMatrices[boneIdx].GetTranslation());
+                rotations.push_back(m_boneWorldMatrices[boneIdx].GetRotation());
 
                 // Store up vector for twist tracking
-                Vector3 up = m_boneMatrices[boneIdx].GetRotation() * Vector3(0.0f, 1.0f, 0.0f);
+                Vector3 up = m_boneWorldMatrices[boneIdx].GetRotation() * Vector3(0.0f, 1.0f, 0.0f);
                 upVectors.push_back(up);
             }
         }
@@ -2439,14 +2434,22 @@ namespace cx
         }
 
         // Update rotations with twist preservation
-        for (size_t i = 0; i < chain.boneIndices.size() - 1; ++i)
+        // Track each bone's post-solve world rotation so the next bone's delta is
+        // expressed in the correct parent frame instead of a stale pre-solve one
+        Matrix4 rootParentTransform = Matrix4::Identity();
+        if (m_skeleton->bones[validBones[0]].parentIndex >= 0)
+            rootParentTransform = m_boneWorldMatrices[m_skeleton->bones[validBones[0]].parentIndex];
+
+        Quaternion runningWorldRot = rootParentTransform.GetRotation();
+
+        for (size_t i = 0; i < validBones.size() - 1; ++i)
         {
-            int boneIdx = chain.boneIndices[i];
+            int boneIdx = validBones[i];
             if (boneIdx >= static_cast<int>(m_localTransforms.size()))
                 continue;
 
             // Calculate bone direction
-            Vector3 oldDir = (m_boneMatrices[chain.boneIndices[i + 1]].GetTranslation() - m_boneMatrices[boneIdx].GetTranslation()).Normalize();
+            Vector3 oldDir = (m_boneWorldMatrices[validBones[i + 1]].GetTranslation() - m_boneWorldMatrices[boneIdx].GetTranslation()).Normalize();
             Vector3 newDir = (positions[i + 1] - positions[i]).Normalize();
 
             // Calculate rotation to align directions
@@ -2474,25 +2477,15 @@ namespace cx
             // Combine direction and twist rotations
             Quaternion finalWorldRot = twistRot * dirRot;
 
-            // Convert to local space
-            Matrix4 parentTransform = Matrix4::Identity();
-            if (m_skeleton->bones[boneIdx].parentIndex >= 0)
-                parentTransform = m_boneMatrices[m_skeleton->bones[boneIdx].parentIndex];
-
-            Quaternion parentRot = parentTransform.GetRotation();
             Quaternion currentLocalRot = m_localTransforms[boneIdx].GetRotation();
-            Quaternion currentWorldRot = parentRot * currentLocalRot;
 
-            Quaternion newWorldRot = finalWorldRot * currentWorldRot;
-            Quaternion newLocalRot = parentRot.Inverse() * newWorldRot;
-
-            // Apply rest pose if needed
+            // If using rest pose, apply the world delta to the rest pose instead of the current pose
+            Quaternion baseLocalRot = currentLocalRot;
             if (chain.useRestPose && i < chain.restPoseRotations.size())
-            {
-                Quaternion restPoseRot = chain.restPoseRotations[i];
-                Quaternion restInverse = restPoseRot.Inverse();
-                newLocalRot = restPoseRot * (restInverse * newLocalRot);
-            }
+                baseLocalRot = chain.restPoseRotations[i];
+
+            // Convert to local space (the world delta conjugated through the parent frame)
+            Quaternion newLocalRot = runningWorldRot.Inverse() * (finalWorldRot * (runningWorldRot * baseLocalRot));
 
             // Blend with weight
             Quaternion finalRot = Quaternion::Slerp(currentLocalRot, newLocalRot, chain.weight);
@@ -2501,19 +2494,27 @@ namespace cx
             Vector3 trans = m_localTransforms[boneIdx].GetTranslation();
             Vector3 scale = m_localTransforms[boneIdx].GetScale();
             m_localTransforms[boneIdx] = Matrix4::Translate(trans) * Matrix4::FromQuaternion(finalRot) * Matrix4::Scale(scale);
+
+            runningWorldRot = runningWorldRot * finalRot;
         }
 
         // Handle end effector rotation
-        if (!chain.boneIndices.empty())
+        if (!validBones.empty())
         {
-            int tipIdx = chain.boneIndices.back();
+            int tipIdx = validBones.back();
             if (tipIdx < static_cast<int>(m_localTransforms.size()))
             {
-                Matrix4 parentTransform = Matrix4::Identity();
-                if (m_skeleton->bones[tipIdx].parentIndex >= 0)
-                    parentTransform = m_boneMatrices[m_skeleton->bones[tipIdx].parentIndex];
+                // Use the post-solve parent frame when the parent is the previous chain bone
+                Quaternion parentRot = runningWorldRot;
+                if (m_skeleton->bones[tipIdx].parentIndex < 0 ||
+                    (validBones.size() > 1 && m_skeleton->bones[tipIdx].parentIndex != validBones[validBones.size() - 2]))
+                {
+                    Matrix4 parentTransform = Matrix4::Identity();
+                    if (m_skeleton->bones[tipIdx].parentIndex >= 0)
+                        parentTransform = m_boneWorldMatrices[m_skeleton->bones[tipIdx].parentIndex];
+                    parentRot = parentTransform.GetRotation();
+                }
 
-                Quaternion parentRot = parentTransform.GetRotation();
                 Quaternion currentLocalRot = m_localTransforms[tipIdx].GetRotation();
 
                 // Convert target rotation to local space
@@ -2545,12 +2546,12 @@ namespace cx
                 int boneIdx = chain.boneIndices[i];
                 int tipIdx = chain.boneIndices.back();
 
-                if (boneIdx >= static_cast<int>(m_boneMatrices.size()) ||
-                    tipIdx >= static_cast<int>(m_boneMatrices.size()))
+                if (boneIdx >= static_cast<int>(m_boneWorldMatrices.size()) ||
+                    tipIdx >= static_cast<int>(m_boneWorldMatrices.size()))
                     continue;
 
-                Vector3 bonePos = m_boneMatrices[boneIdx].GetTranslation();
-                Vector3 tipPos = m_boneMatrices[tipIdx].GetTranslation();
+                Vector3 bonePos = m_boneWorldMatrices[boneIdx].GetTranslation();
+                Vector3 tipPos = m_boneWorldMatrices[tipIdx].GetTranslation();
 
                 Vector3 toTip = (tipPos - bonePos).Normalize();
                 Vector3 toTarget = (target - bonePos).Normalize();
@@ -2569,7 +2570,9 @@ namespace cx
 
             // Check if we're close enough
             int tipIdx = chain.boneIndices.back();
-            Vector3 tipPos = m_boneMatrices[tipIdx].GetTranslation();
+            if (tipIdx < 0 || tipIdx >= static_cast<int>(m_boneWorldMatrices.size()))
+                break;
+            Vector3 tipPos = m_boneWorldMatrices[tipIdx].GetTranslation();
             if ((tipPos - target).Length() < chain.tolerance)
                 break;
         }
@@ -2577,20 +2580,30 @@ namespace cx
 
     Vector3 Animator::GetBoneWorldPosition(int boneIndex) const
     {
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(m_boneMatrices.size()))
+        if (boneIndex < 0 || boneIndex >= static_cast<int>(m_boneWorldMatrices.size()))
             return { 0.0f, 0.0f, 0.0f };
 
-        return m_boneMatrices[boneIndex].GetTranslation();
+        return m_boneWorldMatrices[boneIndex].GetTranslation();
     }
 
     void Animator::SetBoneWorldPosition(int boneIndex, const Vector3& position)
     {
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(m_localTransforms.size()))
+        if (boneIndex < 0 || boneIndex >= static_cast<int>(m_localTransforms.size()) ||
+            boneIndex >= static_cast<int>(m_boneWorldMatrices.size()))
             return;
+
+        // Convert the world position to the bone's local space
+        Vector3 localPos = position;
+        if (m_skeleton && m_skeleton->bones[boneIndex].parentIndex >= 0)
+        {
+            int parentIndex = m_skeleton->bones[boneIndex].parentIndex;
+            if (parentIndex < static_cast<int>(m_boneWorldMatrices.size()))
+                localPos = m_boneWorldMatrices[parentIndex].Inverse().TransformPoint(position);
+        }
 
         Quaternion rot = m_localTransforms[boneIndex].GetRotation();
         Vector3 scale = m_localTransforms[boneIndex].GetScale();
-        m_localTransforms[boneIndex] = Matrix4::Translate(position) * Matrix4::FromQuaternion(rot) * Matrix4::Scale(scale);
+        m_localTransforms[boneIndex] = Matrix4::Translate(localPos) * Matrix4::FromQuaternion(rot) * Matrix4::Scale(scale);
     }
 
     void Animator::SampleAnimation(float time)
@@ -2650,6 +2663,15 @@ namespace cx
         }
     }
 
+    void Animator::SetNodeCount(int count)
+    {
+        if (count <= 0)
+            return;
+
+        if (static_cast<int>(m_nodeTransforms.size()) < count)
+            m_nodeTransforms.resize(static_cast<size_t>(count), Matrix4::Identity());
+    }
+
     void Animator::SampleNodeAnimation(float time)
     {
         if (!m_currentClip)
@@ -2685,8 +2707,10 @@ namespace cx
             m_animatedNodeTransforms[channel.targetNodeIndex] = localTransform;
 
             // Update the node transforms vector
-            if (channel.targetNodeIndex < static_cast<int>(m_nodeTransforms.size()))
-                m_nodeTransforms[channel.targetNodeIndex] = localTransform;
+            if (channel.targetNodeIndex >= static_cast<int>(m_nodeTransforms.size()))
+                m_nodeTransforms.resize(static_cast<size_t>(channel.targetNodeIndex) + 1, Matrix4::Identity());
+
+            m_nodeTransforms[channel.targetNodeIndex] = localTransform;
         }
     }
 
@@ -2729,17 +2753,22 @@ namespace cx
                     interpolatedWeights[w] = w0 + (w1 - w0) * factor;
             }
 
-            // Apply to the target mesh
-            if (channel.targetNodeIndex >= 0 && channel.targetNodeIndex < static_cast<int>(m_nodeTransforms.size()))
+            // Find the mesh that belongs to this node index (fallback: mesh index)
+            int meshIndex = -1;
+            for (size_t i = 0; i < meshes.size(); ++i)
             {
-                if (channel.targetNodeIndex >= static_cast<int>(meshes.size()))
+                if (meshes[i] && meshes[i]->GetNodeIndex() == channel.targetNodeIndex)
                 {
-                    std::cout << "[WARNING] Failed to apply morph weight during animation." << std::endl;
-                    continue;
+                    meshIndex = static_cast<int>(i);
+                    break;
                 }
-
-                meshes[channel.targetNodeIndex]->SetMorphWeights(interpolatedWeights);
             }
+
+            if (meshIndex < 0 && channel.targetNodeIndex >= 0 && channel.targetNodeIndex < static_cast<int>(meshes.size()))
+                meshIndex = channel.targetNodeIndex;
+
+            if (meshIndex >= 0)
+                meshes[meshIndex]->SetMorphWeights(interpolatedWeights);
         }
     }
 
@@ -2855,12 +2884,14 @@ namespace cx
             return;
 
         m_boneMatrices.resize(m_skeleton->bones.size());
+        m_boneWorldMatrices.resize(m_skeleton->bones.size());
 
         std::function<void(int, const Matrix4&)> compute = [&](int index, const Matrix4& parentGlobal)
         {
             const Bone& bone = m_skeleton->bones[index];
             Matrix4 global = parentGlobal * m_localTransforms[index];
 
+            m_boneWorldMatrices[index] = global;
             m_boneMatrices[index] = global * bone.inverseBindMatrix;
 
             for (int child : bone.children)

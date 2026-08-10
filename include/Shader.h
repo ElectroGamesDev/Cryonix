@@ -6,6 +6,7 @@
 #include <variant>
 #include <array>
 #include <bgfx.h>
+#include <embedded_shader.h>
 
 namespace cx
 {
@@ -54,6 +55,8 @@ namespace cx
         void Destroy();
         bool IsValid() const;
 
+        static Shader* CreateDefault();
+
         // Uniform setters
         void SetUniform(std::string_view name, const float v);
         void SetUniform(std::string_view name, const int v);
@@ -92,6 +95,7 @@ namespace cx
     };
 
     extern Shader* s_defaultShader;
+    const bgfx::EmbeddedShader* GetEmbeddedShaders();
     Shader* LoadDefaultShader(std::string_view vertexPath, std::string_view fragmentPath);
     Shader* GetDefaultShader();
 }
